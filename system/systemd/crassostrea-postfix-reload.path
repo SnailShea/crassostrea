@@ -1,0 +1,15 @@
+[Unit]
+Description=Crassostrea: reload Postfix when the relay networks, the size limit, the rate limits or the PTR check change
+
+[Path]
+# Written by the web UI (atomic rename)
+PathChanged=/var/lib/crassostrea/postfix/relay_networks.cidr
+PathChanged=/var/lib/crassostrea/postfix/message_size_limit
+PathChanged=/var/lib/crassostrea/postfix/rate_limits
+PathChanged=/var/lib/crassostrea/postfix/rate_limit_exempt.cidr
+PathChanged=/var/lib/crassostrea/postfix/ptr_check
+PathChanged=/var/lib/crassostrea/postfix/client_exempt.cidr
+Unit=crassostrea-postfix-reload.service
+
+[Install]
+WantedBy=multi-user.target

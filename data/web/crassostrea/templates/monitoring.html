@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Monitoring{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Monitoring</h1>
+    <p>The state of the gateway's checks and services. Metrics for Prometheus, events for a SIEM and the alert
+      mail are set under <a href="{{ url_for('monitoring.settings_page') }}">Settings → Alerts &amp; export</a>.</p>
+  </div>
+</div>
+
+<div class="live" data-live data-live-refresh="30">
+{% include "_monitoring_live.html" %}
+</div>
+
+{% endblock %}

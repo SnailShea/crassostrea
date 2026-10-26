@@ -1,0 +1,24 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Type</th><th>Value</th><th>Comment</th><th>Added</th><th></th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+      <tr>
+        <td>{{ "IP" if e.kind == "ip" else "Sender" }}</td>
+        <td class="mono">{{ e.value }}</td>
+        <td class="muted">{{ e.comment }}</td>
+        <td class="muted nowrap">{{ e.created_at|datetime }}</td>
+        <td class="right">
+          <form method="post" action="{{ url_for('lists.delete', entry_id=e.id) }}" class="inline" data-async>
+            {{ csrf() }}<button type="submit" class="link-button danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No global {{ list_type }} entries.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>

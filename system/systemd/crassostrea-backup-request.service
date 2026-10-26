@@ -1,0 +1,9 @@
+[Unit]
+Description=Crassostrea: backup request of the web UI
+After=mariadb.service valkey.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/backup request
+Nice=10
+TimeoutStartSec=1h

@@ -1,0 +1,9 @@
+[Unit]
+Description=Crassostrea: send DMARC aggregate reports about received mail
+After=network-online.target mariadb.service valkey.service rspamd.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/crassostrea/libexec/dmarc-report
+Nice=10

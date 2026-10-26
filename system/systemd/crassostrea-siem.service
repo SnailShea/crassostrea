@@ -1,0 +1,37 @@
+[Unit]
+Description=Crassostrea: send mail log and audit events to the SIEM (Monitoring page)
+After=network-online.target mariadb.service valkey.service
+Wants=mariadb.service valkey.service
+
+[Service]
+User=crassostrea
+Group=crassostrea
+EnvironmentFile=/etc/crassostrea/crassostrea.conf
+EnvironmentFile=-/etc/crassostrea/units.env
+Environment=PYTHONPATH=/usr/local/lib/crassostrea/web PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 FLASK_APP=crassostrea
+WorkingDirectory=/usr/local/lib/crassostrea/web
+ExecStart=/usr/local/lib/crassostrea/venv/bin/flask --app crassostrea siem-forward
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

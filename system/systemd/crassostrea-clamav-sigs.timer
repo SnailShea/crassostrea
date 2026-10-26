@@ -1,0 +1,11 @@
+[Unit]
+Description=Crassostrea: update the Sanesecurity signatures every 12 hours
+
+[Timer]
+Unit=crassostrea-clamav-sigs.service
+OnBootSec=15min
+OnUnitActiveSec=12h
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

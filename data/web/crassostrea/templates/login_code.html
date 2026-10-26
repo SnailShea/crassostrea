@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% from "_macros.html" import theme_toggle with context %}
+{% block title %}Log in{% endblock %}
+{% block public %}
+{{ theme_toggle("corner-toggle") }}
+<div class="login-wrap">
+  <div class="card login-card">
+    {% if brand.has_logo %}<img class="login-logo" src="{{ url_for('branding.logo', v=brand.version) }}" alt="{{ brand.name }}">{% endif %}
+    <h1>{{ brand.name }}</h1>
+    <p class="muted">Enter the code from your authenticator app, or one of your recovery codes.</p>
+    {% include "_flashes.html" %}
+    <form method="post">
+      {{ form.csrf_token }}
+      {{ field(form.code, autocomplete="one-time-code", inputmode="numeric", autofocus=true, placeholder="123456") }}
+      <button type="submit" class="btn primary">Log in</button>
+    </form>
+    <p><a href="{{ url_for('auth.login') }}">Back</a></p>
+  </div>
+</div>
+{% endblock %}

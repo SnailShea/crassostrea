@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, field, check %}
+{% block title %}Backups{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Backups</h1>
+    <p>The configuration, certificates, database and learned data of the gateway, made every night and on demand.</p>
+  </div>
+</div>
+
+<div class="alert warning">A backup holds every password and private key of the gateway. Keep downloaded copies
+  as safe as the server itself.</div>
+
+<div class="live" data-live data-live-refresh="5">
+{% include "_backups_live.html" %}
+</div>
+
+<div class="grid-2">
+  <form method="post" action="{{ url_for('backups.save_settings') }}" class="card" id="settings">
+    {{ csrf() }}
+    <h2>Settings</h2>
+    <p class="muted">A scheduled backup is made every night around 02:30; manual backups are kept until you delete
+      them.</p>
+    {{ field(form.backup_keep, help="Older scheduled backups are deleted. 1 to 90.") }}
+    {{ check(form.backup_include_quarantine, help="Without it, the quarantine is empty after a restore.") }}
+    {{ check(form.backup_include_mail_log, help="Every logged message in full: can make backups much larger.") }}
+    <p><button type="submit" class="btn primary">Save</button></p>
+  </form>
+  <div class="card">
+    <h2>Restoring</h2>
+    <p>Restoring stops the gateway's services, so it is done on the server, as root:</p>
+    <pre class="log">sudo system/backup.sh restore NAME</pre>
+    <p class="muted">NAME is a backup in <span class="mono">{{ backup_dir }}</span> or the path of a downloaded
+      one. The current configuration and database are saved first. To move the gateway to a new server, install
+      it there with <span class="mono">setup.sh</span>, copy a backup over and restore it. A cluster member cannot
+      be restored: restore one node as a single gateway, then rebuild the cluster.</p>
+  </div>
+</div>
+{% endblock %}

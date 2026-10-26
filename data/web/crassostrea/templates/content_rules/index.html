@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf %}
+{% block title %}Content rules{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Content rules</h1>
+    <p>Your own rules for what a message says or where it comes from: add to its spam score, reject it, or mark
+      it with a header.</p>
+  </div>
+  <a href="{{ url_for('content_rules.create') }}" class="btn primary">Add rule</a>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>When</th><th>Mail</th><th>Then</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rules %}
+      <tr>
+        <td><a href="{{ url_for('content_rules.edit', rule_id=r.id) }}">{{ r.name }}</a>
+          {% if not r.active %}<span class="badge">off</span>{% endif %}
+          {% if r.comment %}<div class="muted small">{{ r.comment }}</div>{% endif %}</td>
+        <td>{{ fields[r.field] }}{% if r.field == 'header' %} <span class="mono">{{ r.header }}</span>{% endif %}
+          {{ matches[r.match] }} <span class="mono">{{ r.value|truncate(60) }}</span></td>
+        <td>{{ directions[r.direction] }}</td>
+        <td>{% if r.action == 'score' %}<span class="badge {{ 'good' if r.score < 0 else 'warn' }}">{{ '%+g'|format(r.score) }}</span>
+          {% elif r.action == 'reject' %}<span class="badge bad">reject</span>{% else %}<span class="badge info">tag</span>{% endif %}</td>
+        <td class="right">
+          <form method="post" action="{{ url_for('content_rules.delete', rule_id=r.id) }}" class="inline"
+                data-confirm="Delete the rule {{ r.name }}?">
+            {{ csrf() }}<button type="submit" class="link-button danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No rules.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">Rules are checked before the other filters. Scores add up with the spam score (thresholds
+    in Settings); a reject rule wins over the others and inbound mail it rejects is quarantined. The mail log
+    shows matching rules as CONTENT_RULE, CONTENT_RULE_REJECT and CONTENT_RULE_TAG.</p>
+</div>
+
+<form method="post" action="{{ url_for('content_rules.test') }}#test" class="card" id="test">
+  {{ test_form.csrf_token }}
+  <h2>Test the rules</h2>
+  {{ field(test_form.source, rows=8, class="mono", placeholder="From: Sales <sales@example.org>\nSubject: Invoice\n\nHello") }}
+  <div class="form-row">
+    {{ field(test_form.envelope_from, placeholder="sales@example.org") }}
+    {{ field(test_form.recipients, placeholder="bob@example.com") }}
+    {{ field(test_form.direction) }}
+  </div>
+  <p><button type="submit" class="btn">Test</button></p>
+  {% if results is not none %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Rule</th><th>Found</th></tr></thead>
+    <tbody>
+    {% for res in results %}
+      <tr><td>{{ res.rule.name }}{% if not res.rule.active %} <span class="badge">off</span>{% endif %}</td>
+        <td>{% if res.matched %}<span class="badge bad">matches</span> <span class="mono small">{{ res.value|truncate(80) }}</span>{% else %}<span class="muted">no</span>{% endif %}</td></tr>
+    {% else %}
+      <tr><td colspan="2" class="empty">No rule for this direction.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}

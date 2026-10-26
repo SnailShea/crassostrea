@@ -1,0 +1,8 @@
+[Unit]
+Description=Crassostrea: create or join a cluster (setup.sh --ha, setup.sh --join)
+
+[Service]
+Type=oneshot
+# root: it installs packages and reconfigures the services, as setup.sh does
+ExecStart=/usr/local/libexec/crassostrea/cluster-setup
+TimeoutStartSec=1h

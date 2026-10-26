@@ -1,0 +1,12 @@
+[Unit]
+Description=Crassostrea: cluster node service (maintenance, Valkey master, probes for the Cluster page)
+After=valkey.service valkey-sentinel.service postfix.service
+
+[Service]
+EnvironmentFile=/etc/crassostrea/crassostrea.conf
+ExecStart=/usr/local/libexec/crassostrea/cluster-node
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+[Unit]
+Description=Crassostrea: obtain or renew the certificate (acme.sh)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/acme

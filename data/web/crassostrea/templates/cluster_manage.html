@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+{% block title %}Cluster settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Cluster</h1>
+    <p>Several gateways as one: every node filters mail and is its own MX host; the database and Valkey are
+      replicated. Create a cluster, add and remove members, maintenance. The state of the cluster is under
+      <a href="{{ url_for('cluster.index') }}">Monitoring → Cluster</a>.</p>
+  </div>
+</div>
+
+{% if not config.CLUSTER_NODES %}
+<div class="live" data-live data-live-refresh="5">
+{% include "_cluster_setup_status.html" %}
+</div>
+
+<div class="alert info">This gateway is not part of a cluster. Create one here, then join the other gateways with
+  the join information it shows, one after another. A cluster survives the failure of a member from three votes
+  on: three nodes, or two nodes and a small witness host.</div>
+
+<div class="grid-2">
+  <form method="post" action="{{ url_for('cluster.create') }}" class="card" id="create">
+    {{ csrf() }}
+    <h2>Create a cluster</h2>
+    <p class="muted">This gateway becomes the first node and keeps its domains, settings and data. It installs the
+      database cluster, Valkey replication and the cluster CA, and restarts its services.</p>
+    <div class="field">
+      <label for="create-address">Cluster address of this gateway</label>
+      <select id="create-address" name="address" {{ 'disabled' if busy }}>
+        {% for a in addresses %}<option value="{{ a }}">{{ a }}</option>{% else %}<option value="">no IPv4 address found</option>{% endfor %}
+      </select>
+      <div class="help">The IPv4 address on which the members reach each other, ideally on a private network.</div>
+    </div>
+    <div class="field">
+      <label for="create-vip">Floating address (optional)</label>
+      <input type="text" id="create-vip" name="vip" class="mono" placeholder="192.0.2.10/24" {{ 'disabled' if busy }}>
+      <div class="help">A shared address for the web interface, moved by keepalived to a working node; the nodes
+        must share a network segment.</div>
+    </div>
+    <p><button type="submit" class="btn primary" {{ 'disabled' if busy or not addresses }}
+               data-confirm="Create a cluster with this gateway as its first node? Its services restart.">Create cluster</button></p>
+  </form>
+
+  <form method="post" action="{{ url_for('cluster.join') }}" class="card" id="join">
+    {{ csrf() }}
+    <h2>Join a cluster</h2>
+    <div class="alert warning">Joining replaces this gateway's domains, accounts, settings, quarantine, mail log and
+      learned data with the cluster's. Its own name, network and certificate settings stay.</div>
+    <div class="field">
+      <label for="join-information">Join information</label>
+      <textarea id="join-information" name="information" rows="4" class="mono" placeholder="sfjoin1.…" {{ 'disabled' if busy }}></textarea>
+      <div class="help">From the Cluster page of a member: <strong>Join information</strong>. It works once, for an
+        hour.</div>
+    </div>
+    <div class="field">
+      <label for="join-address">Cluster address of this gateway</label>
+      <select id="join-address" name="address" {{ 'disabled' if busy }}>
+        {% for a in addresses %}<option value="{{ a }}">{{ a }}</option>{% else %}<option value="">no IPv4 address found</option>{% endfor %}
+      </select>
+    </div>
+    <p><button type="submit" class="btn primary" {{ 'disabled' if busy or not addresses }}
+               data-confirm="Join the cluster? This gateway's data is replaced by the cluster's, and its services restart.">Join cluster</button></p>
+  </form>
+</div>
+<p class="muted">On the server: <span class="mono">sudo ./setup.sh --ha</span> creates a cluster, a join bundle of
+  <span class="mono">system/cluster.sh bundle</span> joins one (<span class="mono">setup.sh --join</span>). A witness
+  host is added that way.</p>
+{% else %}
+<div class="live" data-live data-live-refresh="10">
+{% include "_cluster_manage_live.html" %}
+</div>
+
+<div class="grid-2">
+  <div class="card" id="join-information">
+    <h2>Add a node</h2>
+    {% if join_info %}
+    <div class="alert success">Paste this into <strong>Join a cluster</strong> on the Cluster page of the new
+      gateway. It works once, for an hour.</div>
+    <pre class="log join-information">{{ join_info.information }}</pre>
+    <dl class="props small">
+      <dt>Member</dt><dd class="mono">{{ join_info.host }} ({{ join_info.address }})</dd>
+      <dt>Certificate</dt><dd class="mono">SHA-256 {{ join_info.fingerprint }}</dd>
+    </dl>
+    {% else %}
+    <p>Install the gateway on the new server (<span class="mono">setup.sh</span>), then open its Cluster page and
+      join with a join information from here. It gets this cluster's configuration and data, and every member lets
+      it in automatically.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('cluster.join_information') }}">
+      {{ csrf() }}<button type="submit" class="btn {{ '' if join_info else 'primary' }}">{{ 'New join information' if join_info else 'Join information' }}</button>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Maintenance and members</h2>
+    <p>A node in <strong>maintenance</strong> answers new SMTP connections with a temporary error (421), so senders
+      deliver to the other MX hosts. It hands the Valkey master and the floating address over and keeps delivering
+      its queue. Use it before updating or rebooting a node, one node at a time.</p>
+    <p class="muted"><strong>Remove</strong> a node only when it is switched off for good (like Proxmox's
+      <span class="mono">pvecm delnode</span>): the others drop it from their configuration. Do not start it again
+      with this cluster's data; reinstall it to use it again. A witness host is added on the server:
+      <span class="mono">system/cluster.sh members</span> and <span class="mono">bundle</span>, then
+      <span class="mono">setup.sh --join</span> there.</p>
+    {% if witness_text %}
+    <p class="muted">The witness has no database and does not see changes of the members by itself: after adding or
+      removing a node, run on it</p>
+    <pre class="log join-information">sudo system/cluster.sh members --nodes {{ members_text }} --witness {{ witness_text }}</pre>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}

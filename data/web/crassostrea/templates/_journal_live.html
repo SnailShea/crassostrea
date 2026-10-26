@@ -1,0 +1,10 @@
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if state_error %}<div class="alert danger">{{ state_error }}</div>{% endif %}
+{% if state %}
+<div class="stats">
+  <div class="stat"><div class="label">Waiting</div><div class="value">{{ "{:,}".format(state.queued) }}</div></div>
+  <div class="stat good"><div class="label">Sent</div><div class="value">{{ "{:,}".format(state.sent or 0) }}</div></div>
+  <div class="stat"><div class="label">Last sent</div><div class="value small">{{ state.sent_at|datetime if state.sent_at else '–' }}</div></div>
+</div>
+{% if state.error %}<div class="alert warning">The archive could not be reached ({{ state.error_at|datetime }}): {{ state.error }}</div>{% endif %}
+{% endif %}

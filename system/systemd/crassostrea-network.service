@@ -1,0 +1,7 @@
+[Unit]
+Description=Crassostrea: IP addressing change (requested in the web UI), tested and reverted on failure
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/network-apply
+TimeoutStartSec=10min

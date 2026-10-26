@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Cluster{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Cluster</h1>
+    <p>The state of every member as it reports itself, and the cluster's problems.</p>
+  </div>
+</div>
+
+{% if not config.CLUSTER_NODES %}
+<div class="card">
+  <h2>Single gateway</h2>
+  <p>This gateway is not part of a cluster. Create one, or join an existing one, under
+    <a href="{{ url_for('cluster.manage') }}">Settings → Cluster</a>.</p>
+  {% if setup %}<p class="muted">Last cluster setup: {{ setup.message }}</p>{% endif %}
+</div>
+{% else %}
+<div class="live" data-live data-live-refresh="10">
+{% include "_cluster_live.html" %}
+</div>
+{% endif %}
+{% endblock %}

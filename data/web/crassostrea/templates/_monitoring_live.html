@@ -1,0 +1,40 @@
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+<div class="card">
+  <h2>Checks</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Check</th><th>State</th><th></th></tr></thead>
+    <tbody>
+    {% for name, result in checks.items() %}
+      <tr><td>{{ labels.get(name, name) }}</td><td>{{ result.message }}</td>
+        <td>{% if result.ok %}<span class="badge good">ok</span>{% else %}<span class="badge bad">problem</span>
+          {% if failing_since.get(name) %}<div class="muted small">since {{ failing_since[name]|int|datetime }}</div>{% endif %}{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card" id="services">
+  <div class="card-head"><h2>Services</h2><a href="{{ url_for('logs.index') }}">Logs</a></div>
+  {% if services_error %}<div class="alert warning">{{ services_error }}</div>{% endif %}
+  {% if config.CLUSTER_NODES %}<p class="muted">The services of this node ({{ hostname }}); the
+    <a href="{{ url_for('cluster.index') }}">Cluster</a> page shows every node's.</p>{% endif %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Unit</th><th>State</th><th>Since</th><th>Description</th></tr></thead>
+    <tbody>
+    {% for s in services %}
+      <tr>
+        <td class="mono">{{ s.unit }}</td>
+        <td><span class="status-dot {{ 'good' if s.state == 'active' else ('warn' if s.state in ('activating', 'reloading') else 'bad') }}"></span>{{ s.state }}{% if s.sub_state and s.sub_state != s.state %} <span class="muted">({{ s.sub_state }})</span>{% endif %}</td>
+        <td class="nowrap muted">{{ s.since or '–' }}</td>
+        <td class="muted truncate">{{ s.description }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">No services listed.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>

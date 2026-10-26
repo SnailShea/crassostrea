@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Domains{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Domains</h1>
+    <p>Mail for these domains is accepted, filtered and relayed to their downstream server.</p>
+  </div>
+  {% if current_user.is_full_admin %}<a class="btn primary" href="{{ url_for('domains.create') }}">Add domain</a>{% endif %}
+</div>
+
+<div class="card">
+  <form method="get" class="filters">
+    <input type="search" name="q" value="{{ query }}" placeholder="Search domains">
+    <button type="submit" class="btn">Search</button>
+  </form>
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr><th>Domain</th><th>Downstream server</th><th>Recipients</th><th>Quarantine</th><th>DKIM</th><th>Thresholds</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+    {% for d in domains %}
+      <tr>
+        <td><a href="{{ url_for('domains.edit', domain_id=d.id) }}"><strong>{{ d.name }}</strong></a>
+          {% if d.description %}<div class="muted">{{ d.description }}</div>{% endif %}</td>
+        <td class="mono">{{ d.destination }}</td>
+        <td>
+          {% if d.recipient_check == 'list' %}List ({{ d.recipients|length }})
+          {% elif d.recipient_check == 'verify' %}Call-ahead
+          {% else %}Accept all{% endif %}
+        </td>
+        <td>{% if d.quarantine_enabled %}<span class="badge good">on</span>{% else %}<span class="badge">off</span>{% endif %}</td>
+        <td>{% if d.dkim_key %}<span class="badge good">{{ d.dkim_key.selector }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td>{% if d.has_custom_scores %}<span class="badge info">custom</span>{% else %}<span class="muted">global</span>{% endif %}</td>
+        <td>{% if d.active %}<span class="badge good">active</span>{% else %}<span class="badge bad">disabled</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="7" class="empty">{% if current_user.is_full_admin %}No domains configured yet. <a href="{{ url_for('domains.create') }}">Add your first domain</a>.{% else %}No domains are assigned to you.{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

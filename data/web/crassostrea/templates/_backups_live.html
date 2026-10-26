@@ -1,0 +1,44 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% set badges = {'ok': 'good', 'failed': 'bad', 'running': 'info', 'stale': 'warn'} %}
+{% if busy and (not status or status.state != 'running') %}
+<div class="alert info">Starting…</div>
+{% elif status and status.state == 'running' %}
+<div class="alert info">{{ status.message }}…</div>
+{% elif status and status.state in ('failed', 'stale') %}
+<div class="alert danger">{{ status.message if status.state == 'failed' else 'The last backup stopped before it was done.' }}
+  <span class="muted">({{ status.at|datetime }})</span></div>
+{% endif %}
+<div class="card">
+  <div class="card-head"><h2>Backups</h2>
+    <form method="post" action="{{ url_for('backups.create') }}">
+      {{ csrf() }}<button type="submit" class="btn primary" {{ 'disabled' if busy }}>Back up now</button>
+    </form>
+  </div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Made</th><th>Kind</th><th>Size</th><th>Contents</th><th></th></tr></thead>
+    <tbody>
+    {% for b in backups %}
+      <tr>
+        <td class="nowrap">{{ b.created_at|datetime }}{% if b.hostname %}<div class="muted mono small">{{ b.hostname }}</div>{% endif %}</td>
+        <td><span class="badge {{ 'info' if b.kind == 'manual' }}">{{ b.kind }}</span></td>
+        <td class="nowrap">{{ b.size|filesize }}</td>
+        <td>{% if b.readable %}configuration, database{{ ', quarantine' if b.quarantine }}{{ ', mail log' if b.mail_log }}{{ ', Valkey' if b.valkey }}
+            {% else %}<span class="badge bad">unreadable</span>{% endif %}</td>
+        <td class="right nowrap">
+          <a href="{{ url_for('backups.download', name=b.name) }}">Download</a>
+          ·
+          <form method="post" action="{{ url_for('backups.delete', name=b.name) }}" class="inline"
+                data-confirm="Delete the backup {{ b.name }}?">
+            {{ csrf() }}<button type="submit" class="link-button danger" {{ 'disabled' if busy }}>Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No backups yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>

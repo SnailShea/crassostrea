@@ -1,0 +1,37 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Two-factor</th><th>Last login</th><th></th></tr></thead>
+      <tbody>
+      {% for a in admins %}
+        <tr>
+          <td><a href="{{ url_for('users.access', admin_id=a.id) }}">{{ a.username }}</a>{% if a.id == current_user.id %} <span class="muted">(you)</span>{% endif %}</td>
+          <td>{% if a.is_full_admin %}Administrator{% else %}Domains: {{ a.domains|map(attribute='name')|join(', ') or 'none' }}{% endif %}</td>
+          <td>{% if a.active %}<span class="badge good">active</span>{% else %}<span class="badge bad">disabled</span>{% endif %}</td>
+          <td>{% if a.totp_enabled_at %}<span class="badge good">on</span>{% else %}<span class="badge">off</span>{% endif %}</td>
+          <td class="muted nowrap">{{ a.last_login_at|datetime }}</td>
+          <td class="right nowrap">
+            {% if a.id != current_user.id %}
+            <form method="post" action="{{ url_for('users.toggle', admin_id=a.id) }}" class="inline" data-async>
+              {{ csrf() }}<button type="submit" class="link-button">{{ "Disable" if a.active else "Enable" }}</button>
+            </form>
+            ·
+            {% if a.totp_enabled_at %}
+            <form method="post" action="{{ url_for('users.reset_two_factor', admin_id=a.id) }}" class="inline" data-async
+                  data-confirm="Reset two-factor login of {{ a.username }}? They log in with their password only until they set it up again.">
+              {{ csrf() }}<button type="submit" class="link-button">Reset 2FA</button>
+            </form>
+            ·
+            {% endif %}
+            <form method="post" action="{{ url_for('users.delete', admin_id=a.id) }}" class="inline" data-async
+                  data-confirm="Delete administrator {{ a.username }}?">
+              {{ csrf() }}<button type="submit" class="link-button danger">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>

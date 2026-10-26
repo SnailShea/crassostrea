@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Recovery codes{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Recovery codes</h1>
+  <p>Each code logs you in once instead of a code from your app, e.g. when you lost your phone.</p></div></div>
+<div class="card">
+  <div class="alert warning">These codes are shown only now. Store them somewhere safe, apart from your phone
+    (a password manager or a printout). Codes you had before no longer work.</div>
+  <pre class="recovery-codes">{% for code in codes %}{{ code }}
+{% endfor %}</pre>
+  <p><a class="btn primary" href="{{ url_for('auth.account') }}">I have stored them</a></p>
+</div>
+{% endblock %}

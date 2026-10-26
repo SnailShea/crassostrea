@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Dashboard</h1>
+    <p>Messages the gateway scanned, by outcome{{ ', of your domains' if not current_user.is_full_admin }}. Mail
+      refused before the scan (postscreen, unknown recipients) is not counted.</p>
+  </div>
+</div>
+
+<form method="get" action="{{ url_for('dashboard.index') }}" class="card inline-form">
+  <div class="field"><label for="range">Period</label>
+    <select id="range" name="range">{% for key in ranges %}<option value="{{ key }}" {{ 'selected' if key == range_key }}>{{ {'24h': 'Last 24 hours', '7d': 'Last 7 days', '30d': 'Last 30 days', '12m': 'Last 12 months'}[key] }}</option>{% endfor %}</select></div>
+  <div class="field"><label for="direction">Mail</label>
+    <select id="direction" name="direction"><option value="">All</option>
+      <option value="inbound" {{ 'selected' if direction == 'inbound' }}>Inbound</option>
+      <option value="outbound" {{ 'selected' if direction == 'outbound' }}>Outbound</option></select></div>
+  <div class="field"><label for="domain">Domain</label>
+    <select id="domain" name="domain"><option value="">All</option>
+      {% for d in domains %}<option value="{{ d }}" {{ 'selected' if d == domain }}>{{ d }}</option>{% endfor %}</select></div>
+  <div class="field"><button type="submit" class="btn">Show</button></div>
+</form>
+
+<div class="live" data-live data-live-refresh="30">
+{% include "_dashboard_live.html" %}
+</div>
+{% endblock %}

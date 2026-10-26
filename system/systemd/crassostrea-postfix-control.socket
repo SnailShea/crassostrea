@@ -1,0 +1,14 @@
+[Unit]
+Description=Crassostrea: mail queue actions for the web UI
+
+[Socket]
+ListenStream=/run/crassostrea/postfix-control.sock
+SocketUser=root
+SocketGroup=crassostrea
+SocketMode=0660
+DirectoryMode=0755
+Accept=yes
+MaxConnections=16
+
+[Install]
+WantedBy=sockets.target

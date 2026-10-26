@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: send due quarantine digests every 15 minutes
+
+[Timer]
+Unit=crassostrea-job@send-digests.service
+OnBootSec=5min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target

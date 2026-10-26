@@ -1,0 +1,35 @@
+{% from "_macros.html" import csrf, next_field %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Address</th><th>Status</th><th>Settings</th><th class="num">Quarantine</th><th>Last login</th><th></th></tr></thead>
+      <tbody>
+      {% for u in users %}
+        <tr>
+          <td class="mono"><a href="{{ url_for('mailboxes.edit', user_id=u.id) }}">{{ u.email }}</a></td>
+          <td>{% if u.active %}<span class="badge good">active</span>{% else %}<span class="badge bad">disabled</span>{% endif %}</td>
+          <td class="nowrap">
+            {% if u.has_custom_scores %}<span class="badge info">thresholds</span>{% endif %}
+            {% if u.list_entries %}<span class="badge info">{{ u.list_entries|length }} list entr{{ 'y' if u.list_entries|length == 1 else 'ies' }}</span>{% endif %}
+            {% if u.digest_interval %}<span class="badge">digest {{ u.digest_interval }}</span>{% endif %}
+          </td>
+          <td class="num"><a href="{{ url_for('quarantine.index', user=u.email) }}"
+              title="Inbound quarantined mail not released">{{ pending.get(u.email, 0) }}</a></td>
+          <td class="muted nowrap">{% if u.invited_at %}<span class="badge info" title="Created for quarantined mail, no password set yet">invited</span>{% else %}{{ u.last_login_at|datetime }}{% endif %}</td>
+          <td class="right nowrap">
+            <form method="post" action="{{ url_for('mailboxes.toggle', user_id=u.id) }}" class="inline" data-async>
+              {{ csrf() }}{{ next_field() }}<button type="submit" class="link-button">{{ "Disable" if u.active else "Enable" }}</button>
+            </form>
+            ·
+            <form method="post" action="{{ url_for('mailboxes.delete', user_id=u.id) }}" class="inline" data-async
+                  data-confirm="Delete mailbox user {{ u.email }}?">
+              {{ csrf() }}{{ next_field() }}<button type="submit" class="link-button danger">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="empty">No mailbox users.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>

@@ -1,0 +1,70 @@
+{% macro field(f, help=None) -%}
+<div class="field">
+  {{ f.label() }}
+  {{ f(**kwargs) }}
+  {% if help %}<div class="help">{{ help }}</div>{% endif %}
+  {% for error in f.errors %}<div class="error">{{ error }}</div>{% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro check(f, help=None) -%}
+<div class="check-field">
+  {{ f(**kwargs) }} {{ f.label() }}
+</div>
+{% if help %}<div class="field help">{{ help }}</div>{% endif %}
+{% for error in f.errors %}<div class="field error">{{ error }}</div>{% endfor %}
+{%- endmacro %}
+
+{% macro csrf() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{%- endmacro %}
+
+{% macro next_field() -%}
+<input type="hidden" name="next" value="{{ request.full_path }}">
+{%- endmacro %}
+
+{% macro pager(p) -%}
+{% if p.pages > 1 %}
+<nav class="pagination">
+  <span class="muted">Page {{ p.page }} of {{ p.pages }} · {{ p.total }} items</span>
+  {% if p.has_prev %}<a class="btn small" href="{{ url_with(page=p.prev_num) }}">‹ Previous</a>{% endif %}
+  {% if p.has_next %}<a class="btn small" href="{{ url_with(page=p.next_num) }}">Next ›</a>{% endif %}
+</nav>
+{% endif %}
+{%- endmacro %}
+
+{% macro action_badge(action) -%}
+<span class="badge {{ action|action_class }}">{{ action or "–" }}</span>
+{%- endmacro %}
+
+{% macro symbols(items, limit=None) -%}
+{% for s in items[:limit] if s.score != 0 or not limit %}
+<span class="symbol {{ 'pos' if s.score > 0 else ('neg' if s.score < 0 else '') }}" title="{{ s.name|explain_symbol }}{{ ' – ' if s.name|explain_symbol and s.options }}{{ s.options|join(', ') }}">{{ s.name }} {{ '%.2f'|format(s.score) }}</span>
+{% endfor %}
+{%- endmacro %}
+
+{# The reasons for a verdict in plain language: explained symbols that
+   added score, highest first #}
+{% macro reasons(items, limit=8) -%}
+{% set explained = [] %}
+{% for s in items if s.score > 0 and s.name|explain_symbol %}{% if explained|length < limit %}{% set _ = explained.append(s) %}{% endif %}{% endfor %}
+{% if explained %}
+<ul class="reasons">
+  {% for s in explained %}<li>{{ s.name|explain_symbol }} <span class="muted mono">{{ s.name }} +{{ '%.1f'|format(s.score) }}</span></li>{% endfor %}
+</ul>
+{% else %}
+<p class="muted">No single rule stands out: many small signs added up.</p>
+{% endif %}
+{%- endmacro %}
+
+{% macro theme_toggle(cls="") -%}
+{% set order = ["system", "light", "dark"] %}
+{% set labels = {"system": "◐ System theme", "light": "☀ Light theme", "dark": "☾ Dark theme"} %}
+{% set next_theme = order[(order.index(theme_choice) + 1) % 3] %}
+<form method="post" action="{{ url_for('branding.set_theme') }}" class="theme-toggle {{ cls }}" data-theme-toggle>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <button type="submit" name="theme" value="{{ next_theme }}" class="link-button"
+          title="Switch to {{ themes[next_theme]|lower }}" aria-label="Theme: {{ theme_choice }}, switch to {{ next_theme }}">{{ labels[theme_choice] }}</button>
+</form>
+{%- endmacro %}

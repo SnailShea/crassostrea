@@ -1,0 +1,21 @@
+Flask==3.1.0
+Flask-Login==0.6.3
+Flask-SQLAlchemy==3.1.1
+Flask-WTF==1.2.2
+SQLAlchemy==2.0.36
+WTForms==3.2.1
+PyMySQL==1.1.1
+redis==5.2.1
+requests==2.32.3
+gunicorn==23.0.0
+cryptography==44.0.0
+# Argon2 hashes imported from other mail systems (passwords.py)
+argon2-cffi==23.1.0
+dkimpy==1.1.8
+swagger-ui-bundle==1.1.0
+dnspython==2.7.0
+nh3==0.2.20
+segno==1.6.1
+ldap3==2.9.1
+# ldap3 imports names that later pyasn1 versions deprecate
+pyasn1==0.6.4

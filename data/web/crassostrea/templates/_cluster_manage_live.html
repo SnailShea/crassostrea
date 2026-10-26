@@ -1,0 +1,73 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% for error in errors %}<div class="alert danger">{{ error }}</div>{% endfor %}
+{% if state %}
+{% if state.votes.total < 3 %}
+<div class="alert warning">The cluster has {{ state.votes.total }} vote{{ 's' if state.votes.total != 1 }}: it
+  survives the failure of a member only from 3 votes on. Add a node (or a witness host).</div>
+{% endif %}
+<div class="card">
+  <div class="card-head"><h2>Members</h2><a href="{{ url_for('cluster.index') }}">State of the cluster</a></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Member</th><th>State</th><th>Valkey</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for m in state.members %}
+      <tr>
+        <td><span class="mono">{{ m.name }}</span>{% if m.self %} <span class="badge info">this node</span>{% endif %}
+          <div class="muted mono small">{{ m.address }}</div></td>
+        <td>{% if not m.reporting %}<span class="badge bad">not reporting</span>
+          {% elif m.maintenance %}<span class="badge {{ 'info' if m.maintenance_applied else 'warn' }}">{{ 'maintenance' if m.maintenance_applied else 'entering maintenance' }}</span>
+          {% elif m.maintenance_applied %}<span class="badge warn">leaving maintenance</span>
+          {% else %}<span class="badge good">accepting mail</span>{% endif %}</td>
+        <td>{% if m.valkey and m.valkey.role == 'master' %}<span class="badge good">master</span>
+          {% elif m.valkey and m.valkey.role == 'slave' %}<span class="badge {{ 'good' if m.valkey.link == 'up' else 'bad' }}">replica</span>
+          {% else %}<span class="muted">–</span>{% endif %}
+          {% if m.promoting %}<span class="badge info">becoming master…</span>{% endif %}</td>
+        <td class="nowrap">
+          {% if m.maintenance %}
+          <form method="post" action="{{ url_for('cluster.maintenance', node=m.name) }}" class="inline">
+            {{ csrf() }}<input type="hidden" name="on" value="0">
+            <button type="submit" class="btn small">End maintenance</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('cluster.maintenance', node=m.name) }}" class="inline"
+                data-confirm="Put {{ m.name }} into maintenance? It accepts no new mail until you take it out.">
+            {{ csrf() }}<input type="hidden" name="on" value="1">
+            <button type="submit" class="btn small">Maintenance</button>
+          </form>
+          {% endif %}
+          {% if m.reporting and not m.maintenance and m.valkey and m.valkey.role == 'slave' and m.valkey.link == 'up' and not m.promoting %}
+          <form method="post" action="{{ url_for('cluster.valkey_master', node=m.name) }}" class="inline"
+                data-confirm="Make {{ m.name }} the Valkey master? Clients reconnect within seconds.">
+            {{ csrf() }}<button type="submit" class="btn small">Make Valkey master</button>
+          </form>
+          {% endif %}
+          {% if not m.reporting and not m.self %}
+          <form method="post" action="{{ url_for('cluster.remove', node=m.name) }}" class="inline"
+                data-confirm="Remove {{ m.name }} from the cluster? Only if it is switched off for good: it must not start again with this cluster's data.">
+            {{ csrf() }}<button type="submit" class="btn small danger">Remove</button>
+          </form>
+          {% endif %}
+          {% if m.last_action %}<div class="muted small {{ '' if m.last_action.ok else 'bad' }}" title="{{ m.last_action.at|datetime }}">{{ m.last_action.message }}</div>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    {% if state.witness %}
+      <tr>
+        <td><span class="mono">{{ state.witness.name }}</span> <span class="badge">witness</span>
+          <div class="muted mono small">{{ state.witness.address }}</div></td>
+        <td colspan="2" class="muted small">Votes only: receives no mail and holds no data.</td>
+        <td>
+          <form method="post" action="{{ url_for('cluster.remove_witness') }}" class="inline"
+                data-confirm="Remove the witness {{ state.witness.name }}? The cluster loses its vote.">
+            {{ csrf() }}<button type="submit" class="btn small danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% endif %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}

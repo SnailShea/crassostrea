@@ -1,0 +1,127 @@
+#!/usr/bin/python3 -I
+"""Journal of the gateway's services for the web UI's Logs page
+(crassostrea-logs@.service).
+
+Socket-activated per connection (Accept=yes): one JSON request is read from
+stdin, one JSON response written to stdout. Runs as root because the journal
+is readable only by root and the systemd-journal group; the socket is only
+accessible to the crassostrea group. The web UI names a source from SOURCES,
+never a unit: only the units listed here can be read.
+
+Request:  {"source": "rspamd", "lines": 500, "priority": "warning"}
+Response: {"ok": true, "entries": [{"time", "unit", "identifier", "pid",
+          "priority", "message"}, ...]} (newest first)
+"""
+import json
+import subprocess
+import sys
+
+MAX_REQUEST = 4096
+MAX_LINES = 2000
+TIMEOUT = 30
+JOURNALCTL = "/usr/bin/journalctl"
+
+SOURCES = {
+    "rspamd": ["rspamd.service"],
+    "clamav": ["clamd@crassostrea.service", "clamav-freshclam.service", "crassostrea-clamav-sigs.service",
+               "crassostrea-olefy.service"],
+    "web": ["crassostrea-web.service", "crassostrea-web-internal.service"],
+    "nginx": ["nginx.service"],
+    "database": ["mariadb.service", "garb.service"],
+    "valkey": ["valkey.service", "valkey-sentinel.service", "haproxy.service"],
+    "dns": ["unbound.service"],
+    "postfix-service": ["postfix.service", "crassostrea-postfix-tlspol.service", "crassostrea-postfix-reload.service"],
+    "netfilter": ["crassostrea-netfilter.service", "crassostrea-logship.service"],
+    "watchdog": ["crassostrea-watchdog.service"],
+    "certificates": ["crassostrea-acme.service", "crassostrea-tls.service"],
+    "jobs": ["crassostrea-job@*.service", "crassostrea-backup.service", "crassostrea-backup-request.service",
+             "crassostrea-dmarc-report.service", "crassostrea-sa-rules.service"],
+    "senders": ["crassostrea-siem.service", "crassostrea-journal.service"],
+    "system": ["crassostrea-hostname.service", "crassostrea-network.service", "crassostrea-postfix-control@*.service",
+               "crassostrea-logs@*.service"],
+    "cluster": ["crassostrea-cluster.service", "crassostrea-cluster-report.service", "keepalived.service"],
+}
+# journalctl -p: this priority and more severe
+PRIORITIES = ("emerg", "alert", "crit", "err", "warning", "notice", "info", "debug")
+
+
+class RequestError(ValueError):
+    pass
+
+
+def argv_for(request):
+    if not isinstance(request, dict):
+        raise RequestError("request must be an object")
+    units = SOURCES.get(request.get("source"))
+    if units is None:
+        raise RequestError("unknown source")
+    lines = request.get("lines", 500)
+    if not isinstance(lines, int) or isinstance(lines, bool) or not 1 <= lines <= MAX_LINES:
+        raise RequestError(f"lines must be 1 to {MAX_LINES}")
+    argv = [JOURNALCTL, "--no-pager", "--quiet", "--output=json", "--reverse", f"--lines={lines}",
+            "--output-fields=MESSAGE,PRIORITY,_SYSTEMD_UNIT,UNIT,SYSLOG_IDENTIFIER,_PID"]
+    priority = request.get("priority") or ""
+    if priority:
+        if priority not in PRIORITIES:
+            raise RequestError("unknown priority")
+        argv.append(f"--priority={priority}")
+    for unit in units:
+        argv.append(f"--unit={unit}")
+    return argv
+
+
+def _text(value):
+    """MESSAGE is an array of bytes when it is not valid UTF-8."""
+    if isinstance(value, list):
+        try:
+            return bytes(value).decode("utf-8", "replace")
+        except (TypeError, ValueError):
+            return ""
+    return value if isinstance(value, str) else ""
+
+
+def parse(output):
+    entries = []
+    for line in output.splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        try:
+            time = int(record.get("__REALTIME_TIMESTAMP", "0")) / 1e6
+            priority = int(record.get("PRIORITY", "6"))
+        except (TypeError, ValueError):
+            time, priority = 0, 6
+        unit = record.get("_SYSTEMD_UNIT", "")
+        if unit == "init.scope":  # systemd about the unit (started, failed, ...)
+            unit = record.get("UNIT", unit)
+        entries.append({"time": time, "unit": unit,
+                        "identifier": record.get("SYSLOG_IDENTIFIER", ""), "pid": record.get("_PID", ""),
+                        "priority": priority, "message": _text(record.get("MESSAGE"))[:4000]})
+    return entries
+
+
+def handle(raw, run=subprocess.run):
+    try:
+        argv = argv_for(json.loads(raw))
+    except (ValueError, RecursionError) as exc:
+        return {"ok": False, "error": str(exc) if isinstance(exc, RequestError) else "invalid request"}
+    try:
+        result = run(argv, capture_output=True, text=True, timeout=TIMEOUT, check=False)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"ok": False, "error": f"journalctl failed: {exc}"}
+    # 1: no entries matched (some versions), not an error
+    if result.returncode not in (0, 1):
+        return {"ok": False, "error": (result.stderr or "journalctl failed").strip()[:500]}
+    return {"ok": True, "entries": parse(result.stdout)}
+
+
+def main():
+    raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
+    response = {"ok": False, "error": "request too large"} if len(raw) > MAX_REQUEST else handle(raw)
+    sys.stdout.write(json.dumps(response))
+    sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

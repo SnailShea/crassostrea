@@ -1,0 +1,42 @@
+[Unit]
+Description=Crassostrea web UI (gunicorn, 127.0.0.1:8000)
+After=network-online.target mariadb.service valkey.service
+Wants=mariadb.service valkey.service
+
+[Service]
+User=crassostrea
+Group=crassostrea
+EnvironmentFile=/etc/crassostrea/crassostrea.conf
+EnvironmentFile=-/etc/crassostrea/units.env
+Environment=PYTHONPATH=/usr/local/lib/crassostrea/web PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 FLASK_APP=crassostrea
+WorkingDirectory=/usr/local/lib/crassostrea/web
+# Creates and migrates the tables, the initial admin and the map files
+ExecStartPre=/usr/local/lib/crassostrea/venv/bin/flask --app crassostrea init-db
+ExecStart=/usr/local/lib/crassostrea/venv/bin/gunicorn -c /usr/local/lib/crassostrea/web/gunicorn.conf.py --bind 127.0.0.1:8000 "crassostrea:create_app('ui')"
+Restart=always
+RestartSec=5
+# Maps for rspamd and postfix are written by the web UI
+ReadWritePaths=/etc/rspamd/custom /var/lib/crassostrea/postfix /var/lib/crassostrea/web
+ReadWritePaths=-/var/lib/crassostrea/cluster-bundles
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

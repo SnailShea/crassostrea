@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf %}
+{% block title %}Outbound limits{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Outbound limits</h1>
+    <p>How many recipients each sender of the relay networks may send to, so a compromised account or device
+      cannot send a flood of spam through the gateway.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Every sender</h2>
+    <form method="post" action="{{ url_for('outbound.save_default') }}" class="inline-form">
+      {{ default_form.csrf_token }}
+      {{ field(default_form.outbound_limit) }}
+      {{ field(default_form.outbound_limit_period) }}
+      <div class="field"><button type="submit" class="btn primary">Save</button></div>
+    </form>
+    <p class="muted">Each envelope sender gets this limit unless it has its own below; bounces count per sending
+      server. 0: no limit. A message is counted once per recipient. Over the limit, mail is deferred (451) and the
+      sending server retries later; a single message with more recipients than the limit is rejected.</p>
+  </div>
+  <div class="card">
+    <h2>Set a limit</h2>
+    <form method="post" action="{{ url_for('outbound.set_limit') }}" class="inline-form">
+      {{ limit_form.csrf_token }}
+      {{ field(limit_form.sender, placeholder="newsletter@example.com or example.com") }}
+      {{ field(limit_form.max_recipients) }}
+      {{ field(limit_form.period) }}
+      {{ field(limit_form.comment) }}
+      <div class="field"><button type="submit" class="btn primary">Save</button></div>
+    </form>
+    <p class="muted">An address's limit wins over its domain's, which applies to each sender of the domain on its
+      own. 0: no limit for them. Saving an existing sender changes its limit.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Limits</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Sender</th><th>Limit</th><th>Comment</th><th></th></tr></thead>
+    <tbody>
+    {% for l in limits %}
+      <tr>
+        <td class="mono">{{ l.sender if '@' in l.sender else 'senders of ' ~ l.sender }}</td>
+        <td>{% if l.max_recipients %}{{ l.max_recipients }} recipients per {{ l.period }}{% else %}<span class="badge good">no limit</span>{% endif %}</td>
+        <td class="muted">{{ l.comment }}</td>
+        <td class="right">
+          <form method="post" action="{{ url_for('outbound.delete_limit', limit_id=l.id) }}" class="inline"
+                data-confirm="Remove the limit for {{ l.sender }}?">
+            {{ csrf() }}<button type="submit" class="link-button danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">No limits for single senders or domains.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="live" data-live data-live-refresh="10">
+{% include "_outbound_live.html" %}
+</div>
+{% endblock %}

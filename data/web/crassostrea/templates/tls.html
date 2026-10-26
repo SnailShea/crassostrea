@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+{% block title %}Certificates &amp; TLS{% endblock %}
+{% block content %}
+{% set locked = settings.cluster %}
+<div class="page-head">
+  <div>
+    <h1>Certificates &amp; TLS</h1>
+    <p>The certificate of the web UI and of SMTP (STARTTLS), and the TLS versions they accept.</p>
+  </div>
+</div>
+
+{% if locked %}
+<div class="alert info">This gateway is a cluster member: each member has its own certificate. Change the settings in
+  <code>crassostrea.conf</code> on each member (<code>SKIP_LETS_ENCRYPT</code>, <code>ADDITIONAL_SAN</code>,
+  <code>HTTPS_TLS_MIN</code>, <code>SMTP_TLS_MIN</code>) and run <code>system/configure.sh</code>.</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>Installed certificate</h2>
+    <span class="badge {{ 'info' if settings.mode == 'letsencrypt' else '' }}">{{ "Let's Encrypt" if settings.mode == 'letsencrypt' else 'Uploaded files' }}</span></div>
+  {% if certificate %}
+  <dl class="props">
+    <dt>Names</dt><dd class="mono">{{ certificate.names|join(', ') or certificate.subject }}</dd>
+    <dt>Issuer</dt><dd>{{ certificate.issuer }}{% if certificate.self_signed %} <span class="badge warn">self-signed</span>{% endif %}</dd>
+    <dt>Valid until</dt><dd>{{ certificate.not_after|datetime }}
+      <span class="badge {{ 'bad' if certificate.days_left < 0 else ('warn' if certificate.days_left < 14 else 'good') }}">
+        {{ 'expired' if certificate.days_left < 0 else certificate.days_left ~ ' days left' }}</span></dd>
+    <dt>Key</dt><dd>{{ certificate.key }}</dd>
+    <dt>SHA-256</dt><dd class="mono fingerprint">{{ certificate.fingerprint }}</dd>
+  </dl>
+  {% if certificate.names and settings.hostname not in certificate.names %}
+  <p class="muted">Does not name the hostname {{ settings.hostname }}.</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No certificate could be read.</p>
+  {% endif %}
+</div>
+
+<div class="card" id="certificate">
+  <div class="card-head">
+    <h2>Certificate</h2>
+    <nav class="view-toggle" aria-label="Certificate management">
+      <a href="{{ url_for('tls.index', mode='letsencrypt') }}#certificate" {% if mode == 'letsencrypt' %}class="active" aria-current="page"{% endif %}>Let's Encrypt</a>
+      <a href="{{ url_for('tls.index', mode='manual') }}#certificate" {% if mode == 'manual' %}class="active" aria-current="page"{% endif %}>Upload files</a>
+    </nav>
+  </div>
+
+  {% if mode == 'letsencrypt' %}
+  <p class="muted">Let's Encrypt issues the certificate and it renews automatically. Every name must point to this
+    server{% if not settings.dns_challenge %} and reach it over HTTP (port 80){% endif %}. Test the names against
+    Let's Encrypt's staging environment first: only names that pass can be applied.</p>
+  <form method="post" action="{{ url_for('tls.letsencrypt_test') }}">
+    {{ csrf() }}
+    <div class="field">
+      <label>Hostname</label>
+      <input type="text" value="{{ settings.hostname }}" disabled>
+      <div class="help">Always on the certificate. <a href="{{ url_for('ipconfig.index') }}#hostname">Change it</a></div>
+    </div>
+    <div class="field">
+      <label for="names">Additional names</label>
+      <textarea id="names" name="names" rows="4" class="mono" placeholder="mail.example.com"
+                {{ 'disabled' if locked }}>{{ extra_names }}</textarea>
+      <div class="help">One per line, e.g. other names of this gateway.{% if settings.dns_challenge %} Wildcards
+        (<code>*.example.com</code>) work with the DNS-01 challenge.{% endif %}</div>
+    </div>
+    <p><button type="submit" class="btn" {{ 'disabled' if locked }}>Test with staging</button></p>
+  </form>
+
+
+  {% else %}
+  <p class="muted">A certificate from another authority, or your own. The files are checked before anything changes;
+    applying them turns off Let's Encrypt, so renew the certificate yourself before it expires.</p>
+  <form method="post" action="{{ url_for('tls.upload') }}" enctype="multipart/form-data">
+    {{ csrf() }}
+    <div class="form-row">
+      <div class="field">
+        <label for="certificate">Certificate (PEM)</label>
+        <input type="file" id="certificate" name="certificate" accept=".pem,.crt,.cer" required {{ 'disabled' if locked }}>
+        <div class="help">The server certificate, optionally followed by its chain.</div>
+      </div>
+      <div class="field">
+        <label for="key">Private key (PEM)</label>
+        <input type="file" id="key" name="key" accept=".pem,.key" required {{ 'disabled' if locked }}>
+        <div class="help">Without a passphrase.</div>
+      </div>
+      <div class="field">
+        <label for="chain">Chain (PEM, optional)</label>
+        <input type="file" id="chain" name="chain" accept=".pem,.crt,.cer" {{ 'disabled' if locked }}>
+        <div class="help">Intermediate certificates, if not in the certificate file.</div>
+      </div>
+    </div>
+    <p><button type="submit" class="btn" {{ 'disabled' if locked }}>Check files</button></p>
+  </form>
+
+  {% if report %}
+  <div class="check-report" id="report">
+    <h3>Check result</h3>
+    {% for error in report.errors %}<div class="alert danger">{{ error }}</div>{% endfor %}
+    {% for warning in report.warnings %}<div class="alert warning">{{ warning }}</div>{% endfor %}
+    {% if report.info %}
+    <dl class="props">
+      <dt>Names</dt><dd class="mono">{{ report.info.names|join(', ') or report.info.subject }}</dd>
+      <dt>Issuer</dt><dd>{{ report.info.issuer }}</dd>
+      <dt>Valid</dt><dd>{{ report.info.not_before|datetime }} – {{ report.info.not_after|datetime }}</dd>
+      <dt>Key</dt><dd>{{ report.info.key }}</dd>
+      <dt>Chain</dt><dd>{{ report.info.chain_length }} certificate{{ 's' if report.info.chain_length != 1 }}</dd>
+    </dl>
+    {% endif %}
+    {% if sha256 %}
+    <form method="post" action="{{ url_for('tls.manual_apply') }}">
+      {{ csrf() }}
+      <input type="hidden" name="sha256" value="{{ sha256 }}">
+      <p>{% if report.warnings %}The files can be used despite the warnings.{% else %}The files passed every check.{% endif %}</p>
+      <button type="submit" class="btn primary" {{ 'disabled' if locked }}
+              data-confirm="Install this certificate for HTTPS and SMTP and turn off Let's Encrypt?">Apply certificate</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
+<div class="live" id="status" data-live data-live-refresh="5">
+{% include "_tls_status.html" %}
+</div>
+
+<form method="post" action="{{ url_for('tls.versions') }}" class="card" id="versions">
+  {{ csrf() }}
+  <h2>TLS versions</h2>
+  <p class="muted">TLS 1.2 and 1.3 are always accepted. Turn on TLS 1.1 or 1.0 only for clients that cannot use
+    anything newer: they are insecure, and accepting them also relaxes the OpenSSL policy of that service (security
+    level 0, SHA-1 signatures). Sending servers that fail the TLS handshake usually retry without TLS. SSL 3.0 is not
+    available: OpenSSL 3 no longer includes it.</p>
+  <div class="table-wrap">
+  <table class="versions">
+    <thead><tr><th>Version</th><th>HTTPS (web UI)</th><th>SMTP (inbound mail)</th></tr></thead>
+    <tbody>
+      <tr><td>TLS 1.3</td><td><input type="checkbox" checked disabled aria-label="TLS 1.3 for HTTPS"></td>
+        <td><input type="checkbox" checked disabled aria-label="TLS 1.3 for SMTP"></td></tr>
+      <tr><td>TLS 1.2</td><td><input type="checkbox" checked disabled aria-label="TLS 1.2 for HTTPS"></td>
+        <td><input type="checkbox" checked disabled aria-label="TLS 1.2 for SMTP"></td></tr>
+      <tr><td>TLS 1.1</td>
+        <td><input type="checkbox" name="https_tls11" {{ 'checked' if settings.https_min in ('1.1', '1.0') }} {{ 'disabled' if locked }} aria-label="TLS 1.1 for HTTPS"></td>
+        <td><input type="checkbox" name="smtp_tls11" {{ 'checked' if settings.smtp_min in ('1.1', '1.0') }} {{ 'disabled' if locked }} aria-label="TLS 1.1 for SMTP"></td></tr>
+      <tr><td>TLS 1.0</td>
+        <td><input type="checkbox" name="https_tls10" {{ 'checked' if settings.https_min == '1.0' }} {{ 'disabled' if locked }} aria-label="TLS 1.0 for HTTPS"></td>
+        <td><input type="checkbox" name="smtp_tls10" {{ 'checked' if settings.smtp_min == '1.0' }} {{ 'disabled' if locked }} aria-label="TLS 1.0 for SMTP"></td></tr>
+      <tr class="muted"><td>SSL 3.0</td><td>not available</td><td>not available</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">TLS 1.0 needs TLS 1.1 as well.</p>
+  <p><button type="submit" class="btn" {{ 'disabled' if locked }}
+             data-confirm="Apply these TLS versions? nginx and Postfix reload.">Save TLS versions</button></p>
+</form>
+{% endblock %}

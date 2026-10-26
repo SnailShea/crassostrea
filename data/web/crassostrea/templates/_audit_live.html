@@ -1,0 +1,26 @@
+{% from "_macros.html" import pager %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+  <div class="table-wrap">
+  <table class="audit">
+    <thead><tr><th>Time</th><th>Who</th><th>IP</th><th>Action</th><th></th><th>Details</th></tr></thead>
+    <tbody>
+    {% for e in pagination.items %}
+      {% set fields = details(e) %}
+      <tr>
+        <td class="nowrap">{{ e.at|datetime }}</td>
+        <td class="mono">{{ e.actor }}</td>
+        <td class="mono nowrap">{{ e.ip or '–' }}</td>
+        <td>{{ describe(e) }}<div class="muted mono small">{{ e.method }} {{ e.target }}</div></td>
+        <td>{% if e.outcome == 'ok' %}<span class="badge good">ok</span>{% else %}<span class="badge bad">failed</span>{% endif %}</td>
+        <td>{{ e.message }}
+          {% if fields %}<details><summary>{{ fields|length }} field{{ 's' if fields|length != 1 }}</summary>
+            <dl class="props">{% for k, v in fields.items() %}<dt class="mono">{{ k }}</dt><dd class="mono">{{ v }}</dd>{% endfor %}</dl>
+          </details>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No entries.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {{ pager(pagination) }}

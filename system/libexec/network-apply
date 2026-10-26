@@ -1,0 +1,463 @@
+#!/usr/bin/python3 -I
+"""Applies an IP addressing change of one interface, requested in the web UI
+(IP addressing page): crassostrea-network.service, started by
+crassostrea-network.path while the request file exists. The web UI runs
+unprivileged and validates the request; it is checked again here.
+
+1. The NetworkManager connection of the interface and the files of the
+   services that depend on the IP families are saved.
+2. The addresses (nmcli) and the families of the services are applied: a
+   family is used if any interface has it (IPV4_ENABLED/IPV6_ENABLED in
+   crassostrea.conf, which system/configure.sh keeps; Postfix, unbound and
+   nginx through system/lib/ipfamily.sh).
+3. Every family with a default route, or a gateway or automatic
+   configuration on some interface, must reach the internet (any of TARGETS
+   by ICMP or TCP), at least one family must, and names must resolve, within
+   TEST_TIME. Otherwise everything saved in 1. is restored and the error is
+   reported.
+
+The outcome is written to STATUS (JSON, read by the web UI). Both families
+may be off on an interface while another interface keeps one; a cluster
+member's addresses identify it to the other members and are not changed here.
+"""
+import ipaddress
+import json
+import os
+import re
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
+
+REQUEST = "/var/lib/crassostrea/web/ip-request.json"
+STATUS_DIR = "/var/lib/crassostrea/network"
+STATUS = STATUS_DIR + "/status.json"
+ROLLBACK = STATUS_DIR + "/rollback"
+CONF = os.environ.get("SF_CONF", "/etc/crassostrea/crassostrea.conf")
+IPFAMILY_LIB = "/usr/local/lib/crassostrea/lib/ipfamily.sh"
+NGINX_CONF = "/etc/nginx/conf.d/crassostrea.conf"
+UNBOUND_CONF = "/etc/unbound/conf.d/crassostrea.conf"
+POSTFIX_MAIN = "/etc/postfix/main.cf"
+# Internet reachability: public resolvers of two operators per family
+TARGETS = {4: ("1.1.1.1", "9.9.9.9"), 6: ("2606:4700:4700::1111", "2620:fe::fe")}
+TARGET_PORTS = (443, 53)
+DNS_TEST_NAME = "letsencrypt.org"
+TEST_TIME = 45
+FAMILY = {4: "IPv4", 6: "IPv6"}
+# Devices that are no interface of the server (as services/ipconfig.py)
+SKIPPED_TYPES = ("loopback", "bridge", "tun", "wireguard", "dummy", "veth")
+UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+DEVICE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,15}$")
+
+LOG = []
+
+
+def log(message):
+    LOG.append(message)
+    print(message, flush=True)
+
+
+def run(*argv, check=True):
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=120)
+    output = (result.stdout + result.stderr).strip()
+    if output:
+        log(f"$ {' '.join(argv)}\n{output}")
+    if check and result.returncode != 0:
+        raise RuntimeError(f"{argv[0]} {argv[1] if len(argv) > 1 else ''} failed: {output or result.returncode}")
+    return result
+
+
+def query(*argv):
+    """Read-only commands whose output is not worth the log."""
+    result = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    return result.stdout if result.returncode == 0 else ""
+
+
+def interface_states():
+    """{device: {"uuid", 4: (enabled, gateway), 6: (...)}} of the interfaces
+    NetworkManager manages; gateway: a gateway is set or the configuration is
+    automatic (DHCP, router advertisements)."""
+    states = {}
+    for line in query("nmcli", "-t", "-f", "DEVICE,TYPE,STATE", "device").splitlines():
+        device, kind, state = (line.split(":", 2) + ["", ""])[:3]
+        if kind in SKIPPED_TYPES or state != "connected":
+            continue
+        uuid = query("nmcli", "-g", "GENERAL.CON-UUID", "device", "show", device).strip()
+        if not UUID_RE.match(uuid):
+            continue
+        values = query("nmcli", "-g", "ipv4.method,ipv4.gateway,ipv6.method,ipv6.gateway", "connection", "show",
+                       uuid).splitlines()
+        m4, g4, m6, g6 = (values + ["", "", "", ""])[:4]
+        states[device] = {"uuid": uuid,
+                          4: (m4 not in ("disabled", "ignore", ""), m4 == "auto" or bool(g4.strip())),
+                          6: (m6 not in ("disabled", "ignore", ""), m6 == "auto" or bool(g6.strip()))}
+    return states
+
+
+def families_of(states):
+    """{version: (on any interface, with a gateway on any interface)}"""
+    return {v: (any(s[v][0] for s in states.values()), any(s[v][0] and s[v][1] for s in states.values()))
+            for v in (4, 6)}
+
+
+def status_set(state, message, **extra):
+    os.makedirs(STATUS_DIR, mode=0o755, exist_ok=True)
+    entry = {"state": state, "message": message, "at": int(time.time()), "log": "\n".join(LOG)[-8000:], **extra}
+    fd, tmp = tempfile.mkstemp(dir=STATUS_DIR)
+    with os.fdopen(fd, "w") as handle:
+        json.dump({"change": entry}, handle, indent=1)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, STATUS)
+
+
+class Invalid(ValueError):
+    pass
+
+
+# ---------------------------------------------------------------------------
+# Request
+# ---------------------------------------------------------------------------
+
+def conf_values():
+    values = {}
+    with open(CONF, encoding="utf-8") as handle:
+        for line in handle:
+            key, sep, value = line.strip().partition("=")
+            if sep and re.match(r"^[A-Z_][A-Z0-9_]*$", key):
+                values[key] = value.strip().strip("\"'")
+    return values
+
+
+def conf_set(key, value):
+    with open(CONF, encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith(key + "="):
+            lines[index] = f"{key}={value}"
+            break
+    else:
+        lines.append(f"{key}={value}")
+    stat = os.stat(CONF)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(CONF))
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    os.chmod(tmp, stat.st_mode & 0o777)
+    os.chown(tmp, stat.st_uid, stat.st_gid)
+    os.replace(tmp, CONF)
+
+
+def _family(data, version):
+    """One family of the request, validated: (enabled, method, addresses, gateway, dns)."""
+    if not isinstance(data, dict):
+        raise Invalid(f"{FAMILY[version]}: invalid settings")
+    enabled = data.get("enabled")
+    if not isinstance(enabled, bool):
+        raise Invalid(f"{FAMILY[version]}: enabled must be true or false")
+    method = data.get("method", "manual")
+    if method not in ("manual", "auto"):
+        raise Invalid(f"{FAMILY[version]}: method must be manual or auto")
+    addresses, gateway, dns = [], None, []
+    if enabled and method == "manual":
+        raw = data.get("addresses")
+        if not isinstance(raw, list) or not 1 <= len(raw) <= 16:
+            raise Invalid(f"{FAMILY[version]}: give 1 to 16 addresses")
+        for item in raw:
+            try:
+                interface = ipaddress.ip_interface(item)
+            except (TypeError, ValueError):
+                raise Invalid(f"{FAMILY[version]}: {item!r} is not an address with prefix length") from None
+            if interface.version != version or "/" not in item:
+                raise Invalid(f"{FAMILY[version]}: {item} is not an {FAMILY[version]} address with prefix length")
+            ip = interface.ip
+            if ip.is_loopback or ip.is_multicast or ip.is_unspecified or ip.is_link_local or ip.is_reserved:
+                raise Invalid(f"{FAMILY[version]}: {ip} cannot be the interface's address")
+            if version == 4 and interface.network.prefixlen < 32 and ip in (interface.network.network_address,
+                                                                             interface.network.broadcast_address):
+                raise Invalid(f"{FAMILY[version]}: {interface} is the network or broadcast address")
+            addresses.append(str(interface))
+        raw_gateway = data.get("gateway") or ""
+        if raw_gateway:
+            try:
+                gateway = ipaddress.ip_address(raw_gateway)
+            except ValueError:
+                raise Invalid(f"{FAMILY[version]}: the gateway {raw_gateway!r} is not an address") from None
+            if gateway.version != version:
+                raise Invalid(f"{FAMILY[version]}: the gateway is not an {FAMILY[version]} address")
+            on_link = any(gateway in ipaddress.ip_interface(a).network for a in addresses)
+            if not on_link and not (version == 6 and gateway.is_link_local):
+                raise Invalid(f"{FAMILY[version]}: the gateway {gateway} is not in the network of an address")
+            if any(gateway == ipaddress.ip_interface(a).ip for a in addresses):
+                raise Invalid(f"{FAMILY[version]}: the gateway cannot be the server's own address")
+            gateway = str(gateway)
+    if enabled:
+        raw_dns = data.get("dns") or []
+        if not isinstance(raw_dns, list) or len(raw_dns) > 3:
+            raise Invalid(f"{FAMILY[version]}: at most 3 DNS servers")
+        for item in raw_dns:
+            try:
+                server = ipaddress.ip_address(item)
+            except (TypeError, ValueError):
+                raise Invalid(f"{FAMILY[version]}: the DNS server {item!r} is not an address") from None
+            if server.version != version:
+                raise Invalid(f"{FAMILY[version]}: the DNS server {server} is not an {FAMILY[version]} address")
+            dns.append(str(server))
+    return enabled, method, addresses, gateway, dns
+
+
+def parse_request(text, conf, states):
+    try:
+        data = json.loads(text)
+    except ValueError:
+        raise Invalid("The request is not JSON") from None
+    if not isinstance(data, dict):
+        raise Invalid("The request is not an object")
+    connection, device = data.get("connection"), data.get("device")
+    if not isinstance(connection, str) or not UUID_RE.match(connection):
+        raise Invalid("Invalid connection")
+    if not isinstance(device, str) or not DEVICE_RE.match(device):
+        raise Invalid("Invalid device")
+    if device not in states or states[device]["uuid"] != connection:
+        raise Invalid(f"{device} is not an interface NetworkManager manages with this connection")
+    v4, v6 = _family(data.get("ipv4"), 4), _family(data.get("ipv6"), 6)
+    others = [s for d, s in states.items() if d != device]
+    if not v4[0] and not v6[0] and not any(s[4][0] or s[6][0] for s in others):
+        raise Invalid("IPv4 and IPv6 cannot both be off: no other interface has an address, the server would be "
+                      "unreachable")
+    # nginx bound to an address of this interface must keep it
+    on_device = {line.split()[3].split("/")[0] for line in query("ip", "-o", "addr", "show", "dev", device)
+                 .splitlines() if len(line.split()) > 3}
+    for key in ("HTTP_BIND", "HTTPS_BIND"):
+        bind = conf.get(key, "").strip("[]")
+        try:
+            version = ipaddress.ip_address(bind).version
+        except ValueError:
+            continue
+        if bind not in on_device:
+            continue
+        family = v4 if version == 4 else v6
+        kept = family[0] and (family[1] == "auto" or any(ipaddress.ip_interface(a).ip == ipaddress.ip_address(bind)
+                                                         for a in family[2]))
+        if not kept:
+            raise Invalid(f"nginx listens on {key}={bind}, which this change removes; change {key} first")
+    return connection, device, v4, v6
+
+
+# ---------------------------------------------------------------------------
+# Apply and restore
+# ---------------------------------------------------------------------------
+
+def connection_file(uuid, device):
+    result = run("nmcli", "-t", "-f", "UUID,DEVICE,FILENAME", "connection", "show")
+    for line in result.stdout.splitlines():
+        found_uuid, found_device, filename = (line.split(":", 2) + ["", ""])[:3]
+        if found_uuid == uuid:
+            if found_device != device:
+                raise Invalid(f"The connection is not active on {device}")
+            if not filename.startswith("/etc/NetworkManager/system-connections/"):
+                raise Invalid("The connection is not stored as a NetworkManager keyfile")
+            return filename
+    raise Invalid("The connection does not exist")
+
+
+SAVED = (NGINX_CONF, UNBOUND_CONF, POSTFIX_MAIN, CONF)
+
+
+def save(filename):
+    shutil.rmtree(ROLLBACK, ignore_errors=True)
+    os.makedirs(ROLLBACK, mode=0o700)
+    shutil.copy2(filename, os.path.join(ROLLBACK, "connection.nmconnection"))
+    for path in SAVED:
+        if os.path.exists(path):
+            shutil.copy2(path, os.path.join(ROLLBACK, path.strip("/").replace("/", "_")))
+
+
+def nm_family_args(prefix, family):
+    enabled, method, addresses, gateway, dns = family
+    if not enabled:
+        return [f"{prefix}.method", "disabled", f"{prefix}.addresses", "", f"{prefix}.gateway", "",
+                f"{prefix}.dns", ""]
+    args = [f"{prefix}.method", method]
+    if method == "manual":
+        args += [f"{prefix}.addresses", ",".join(addresses), f"{prefix}.gateway", gateway or ""]
+    else:
+        args += [f"{prefix}.addresses", "", f"{prefix}.gateway", ""]
+    return args + [f"{prefix}.dns", ",".join(dns)]
+
+
+def activate(uuid, device):
+    """Apply the stored connection to the device, keeping it up where possible."""
+    if run("nmcli", "device", "reapply", device, check=False).returncode != 0:
+        run("nmcli", "connection", "up", uuid)
+    for _ in range(30):
+        state = run("nmcli", "-g", "GENERAL.STATE", "device", "show", device, check=False).stdout.strip()
+        if state.startswith("100"):
+            return
+        time.sleep(1)
+    log(f"{device} is not connected yet: {state}")
+
+
+def family_shell(function, v4_enabled, v6_enabled):
+    """A function of system/lib/ipfamily.sh, so configure.sh and this agree."""
+    result = run("bash", "-c", f'source "{IPFAMILY_LIB}"; {function} "$1" "$2"', "_",
+                 "true" if v4_enabled else "false", "true" if v6_enabled else "false")
+    return result.stdout.strip()
+
+
+def apply_services(v4_enabled, v6_enabled):
+    conf_set("IPV4_ENABLED", "true" if v4_enabled else "false")
+    conf_set("IPV6_ENABLED", "true" if v6_enabled else "false")
+    # Postfix: inet_protocols only takes effect on a restart
+    before = run("postconf", "-h", "inet_protocols").stdout.strip()
+    protocols = family_shell("ip_postfix_inet_protocols", v4_enabled, v6_enabled)
+    run("postconf", "-e", f"inet_protocols={protocols}",
+        "smtp_address_preference=" + family_shell("ip_postfix_address_preference", v4_enabled, v6_enabled))
+    # unbound: the family lines at the end of its server: clause
+    with open(UNBOUND_CONF, encoding="utf-8") as handle:
+        lines = [line for line in handle.read().splitlines()
+                 if line.strip() not in ("do-ip6: no", "prefer-ip6: yes")]
+    extra = family_shell("ip_unbound_lines", v4_enabled, v6_enabled)
+    with open(UNBOUND_CONF, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines + ([extra] if extra else [])) + "\n")
+    # nginx: [::] next to every listen without a bound address
+    with open(NGINX_CONF, encoding="utf-8") as handle:
+        lines = [line for line in handle.read().splitlines() if not re.match(r"^\s*listen \[::\]:", line)]
+    if v6_enabled:
+        out = []
+        for line in lines:
+            out.append(line)
+            match = re.match(r"^(\s*)listen (\d+)((?: ssl)?) default_server;$", line)
+            if match:
+                out.append(f"{match.group(1)}listen [::]:{match.group(2)}{match.group(3)} default_server;")
+        lines = out
+    with open(NGINX_CONF, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    restart_services(postfix_restart=before != protocols)
+
+
+def restart_services(postfix_restart=True):
+    run("nginx", "-t")
+    run("systemctl", "reload", "nginx.service", check=False)
+    run("systemctl", "restart", "unbound.service", check=False)
+    if postfix_restart:
+        run("systemctl", "restart", "postfix.service", check=False)
+    else:
+        run("postfix", "reload", check=False)
+
+
+def restore(uuid, device, filename):
+    log("Restoring the previous settings")
+    shutil.copy2(os.path.join(ROLLBACK, "connection.nmconnection"), filename)
+    run("nmcli", "connection", "load", filename, check=False)
+    activate(uuid, device)
+    for path in SAVED:
+        saved = os.path.join(ROLLBACK, path.strip("/").replace("/", "_"))
+        if os.path.exists(saved):
+            shutil.copy2(saved, path)
+    run("restorecon", "-R", filename, *SAVED, check=False)
+    restart_services()
+
+
+# ---------------------------------------------------------------------------
+# Reachability
+# ---------------------------------------------------------------------------
+
+def reaches(address, version):
+    if run("ping", f"-{version}", "-c", "1", "-W", "2", address, check=False).returncode == 0:
+        return True
+    for port in TARGET_PORTS:
+        try:
+            with socket.socket(socket.AF_INET if version == 4 else socket.AF_INET6, socket.SOCK_STREAM) as sock:
+                sock.settimeout(3)
+                sock.connect((address, port))
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def test(families):
+    """Problems found, [] when DNS and every family with a gateway (or a
+    default route) work, at least one of them. A family only on interfaces
+    without a gateway (an internal network) is not tested. Retried until
+    TEST_TIME passed (addresses need a moment, IPv6 duplicate address
+    detection a few seconds)."""
+    deadline = time.time() + TEST_TIME
+    while True:
+        problems, tested = [], 0
+        for version in (4, 6):
+            enabled, gateway = families[version]
+            if not enabled:
+                continue
+            route = run("ip", f"-{version}", "route", "show", "default", check=False).stdout.strip()
+            if not route:
+                if gateway:
+                    problems.append(f"{FAMILY[version]} has no default route")
+                continue
+            tested += 1
+            if not any(reaches(address, version) for address in TARGETS[version]):
+                problems.append(f"{FAMILY[version]} does not reach the internet "
+                                f"({', '.join(TARGETS[version])} do not answer)")
+        if not problems and not tested:
+            problems.append("no interface has a gateway: the server would not reach the internet")
+        if not problems:
+            try:
+                socket.getaddrinfo(DNS_TEST_NAME, 443)
+            except OSError as exc:
+                problems.append(f"names do not resolve ({DNS_TEST_NAME}: {exc})")
+        if not problems or time.time() > deadline:
+            return problems
+        time.sleep(3)
+
+
+# ---------------------------------------------------------------------------
+
+def main():
+    if not os.path.exists(REQUEST):
+        return 0
+    with open(REQUEST, encoding="utf-8") as handle:
+        text = handle.read()
+    # consumed even if it is refused, so the path unit does not start this again
+    os.unlink(REQUEST)
+    try:
+        conf = conf_values()
+        if conf.get("HA_NODES", "").strip():
+            raise Invalid("This gateway is a cluster member: its addresses identify it to the other members")
+        uuid, device, v4, v6 = parse_request(text, conf, interface_states())
+        filename = connection_file(uuid, device)
+    except (Invalid, RuntimeError, OSError) as exc:
+        status_set("failed", f"Nothing was changed: {exc}")
+        return 1
+
+    status_set("running", "Applying the IP settings and testing the connection")
+    save(filename)
+    try:
+        run("nmcli", "connection", "modify", uuid, *nm_family_args("ipv4", v4), *nm_family_args("ipv6", v6))
+        activate(uuid, device)
+        families = families_of(interface_states())
+        apply_services(families[4][0], families[6][0])
+        problems = test(families)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        problems = [f"applying failed: {exc}"]
+
+    if problems:
+        log("Test failed: " + "; ".join(problems))
+        try:
+            restore(uuid, device, filename)
+            after = test(families_of(interface_states()))
+        except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+            after = [f"restoring failed: {exc}"]
+        restored = "The previous settings were restored" + (
+            "." if not after else f", but the connection test still fails: {'; '.join(after)}")
+        status_set("failed", f"Reverted: {'; '.join(problems)}. {restored}")
+        return 1
+    shutil.rmtree(ROLLBACK, ignore_errors=True)
+    used = [FAMILY[v] for v in (4, 6) if families[v][0]]
+    status_set("ok", f"Applied to {device}: the gateway uses {' and '.join(used)}, the internet is reachable and "
+                     "names resolve.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+{% block title %}Banned IPs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Banned IPs</h1>
+    <p>Hosts blocked by the netfilter service after repeated SMTP protocol errors or failed UI logins.</p>
+  </div>
+</div>
+<div class="live" data-live data-live-refresh="30">
+{% include "_bans_live.html" %}
+</div>
+{% endblock %}

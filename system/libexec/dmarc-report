@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Sends the DMARC aggregate reports about yesterday's mail (rspamadm
+# dmarc_report; crassostrea-dmarc-report.timer) to the domains that ask for
+# them, when the web UI allows it (Reports page, setting dmarc_send_reports).
+# rspamd collects the data either way and forgets it after two days. In a
+# cluster the nodes share it (Valkey): one node sends, under a lock.
+set -o pipefail
+
+SF_CONF=${SF_CONF:-/etc/crassostrea/crassostrea.conf}
+
+conf_get() {
+  sed -n "s/^$1=//p" "${SF_CONF}" | tail -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+
+DBNAME=$(conf_get DBNAME)
+DBNAME=${DBNAME:-crassostrea}
+[[ ${DBNAME} =~ ^[A-Za-z0-9_]+$ ]] || { echo "Invalid DBNAME" >&2; exit 1; }
+
+enabled=$(mariadb -N -B "${DBNAME}" -e "SELECT value FROM settings WHERE \`key\` = 'dmarc_send_reports'" 2> /dev/null)
+if [[ ${enabled} != 1 ]]; then
+  echo "Sending DMARC reports is turned off (web UI: Reports)"
+  exit 0
+fi
+
+lock=$(valkey-cli -h 127.0.0.1 -p 6379 -a "$(conf_get REDISPASS)" --no-auth-warning \
+  SET SF_JOB_LOCK:dmarc-report "$(hostname)" NX EX 7200 2> /dev/null)
+if [[ ${lock} != OK ]]; then
+  echo "Another node sends the DMARC reports (or Valkey cannot be reached)"
+  exit 0
+fi
+exec rspamadm dmarc_report

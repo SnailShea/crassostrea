@@ -1,0 +1,248 @@
+#!/usr/bin/env bash
+# Applies a request of the web UI's Certificates & TLS page
+# (crassostrea-tls.service, started by crassostrea-tls.path while the request
+# file exists). The web UI runs unprivileged and validates its requests; they
+# are checked again here. The outcome is written to STATUS (JSON, read by the
+# web UI). Actions:
+#   le-test       Let's Encrypt staging test for a list of names (acme --staging-test)
+#   le-apply      the names become the certificate's (ADDITIONAL_SAN), Let's Encrypt
+#                 manages it and issues it now; only after a passed staging test of
+#                 exactly these names in the last 24 hours
+#   manual-apply  install the uploaded certificate and key (the files the web UI
+#                 validated, identified by their SHA-256), stop Let's Encrypt
+#   versions      oldest TLS version of HTTPS and inbound SMTP (system/lib/tls.sh)
+# Settings go to crassostrea.conf, so system/configure.sh keeps them. A cluster
+# member has its own certificate and settings: not changed here.
+set -o pipefail
+
+REQUEST=/var/lib/crassostrea/web/tls-request.json
+UPLOAD=/var/lib/crassostrea/web/tls-upload
+STATUS_DIR=/var/lib/crassostrea/tls
+STATUS=${STATUS_DIR}/status.json
+SF_CONF=${SF_CONF:-/etc/crassostrea/crassostrea.conf}
+SF_LIBEXEC=${SF_LIBEXEC:-/usr/local/libexec/crassostrea}
+SF_LIB=${SF_LIB:-/usr/local/lib/crassostrea}
+SSL_DIR=${SSL_DIR:-/etc/crassostrea/ssl}
+ACME_HOME=${ACME_HOME:-/var/lib/crassostrea/acme}
+NGINX_CONF=${NGINX_CONF:-/etc/nginx/conf.d/crassostrea.conf}
+TEST_MAX_AGE=86400
+HOSTNAME_RE='^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$'
+
+die() { echo "ERROR: $*" >&2; exit 1; }
+# shellcheck source=../lib/conf.sh
+source "${SF_LIB}/lib/conf.sh"
+# shellcheck source=../lib/tls.sh
+source "${SF_LIB}/lib/tls.sh"
+# shellcheck source=../lib/nginx.sh
+source "${SF_LIB}/lib/nginx.sh"
+
+conf_get() {
+  sed -n "s/^$1=//p" "${SF_CONF}" | tail -1 | tr -d "\"'"
+}
+
+# status_set SECTION STATE MESSAGE [LOGFILE] [EXTRA_JSON]: record the outcome
+# of an action for the web UI
+status_set() {
+  install -d -m 0755 "${STATUS_DIR}"
+  python3 -I - "${STATUS}" "$@" <<'PY'
+import json, os, sys, tempfile, time
+path, section, state, message = sys.argv[1:5]
+log = sys.argv[5] if len(sys.argv) > 5 else ""
+extra = json.loads(sys.argv[6]) if len(sys.argv) > 6 and sys.argv[6] else {}
+try:
+    with open(path) as handle:
+        status = json.load(handle)
+except (OSError, ValueError):
+    status = {}
+entry = {"state": state, "message": message, "at": int(time.time()), **extra}
+if log:
+    try:
+        with open(log, errors="replace") as handle:
+            entry["log"] = handle.read()[-6000:]
+    except OSError:
+        pass
+status[section] = entry
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+with os.fdopen(fd, "w") as handle:
+    json.dump(status, handle, indent=1)
+os.chmod(tmp, 0o644)
+os.replace(tmp, path)
+PY
+}
+
+[[ -f ${REQUEST} ]] || exit 0
+request=$(cat "${REQUEST}")
+# consumed even if it is refused, so the path unit does not start this again
+rm -f "${REQUEST}"
+
+# The request as shell-safe fields; the values are checked here as well
+fields=$(python3 -I - "${request}" <<'PY'
+import json, re, sys
+NAME = re.compile(r"^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$")
+try:
+    req = json.loads(sys.argv[1])
+    action = req["action"]
+    if action in ("le-test", "le-apply"):
+        names = req["names"]
+        assert isinstance(names, list) and 1 <= len(names) <= 50
+        assert all(isinstance(n, str) and len(n) <= 253 and NAME.match(n) for n in names)
+        assert len(set(names)) == len(names)
+        print(action, *names)
+    elif action == "manual-apply":
+        assert re.fullmatch(r"[0-9a-f]{64}", req["sha256"])
+        print(action, req["sha256"])
+    elif action == "versions":
+        assert req["https_min"] in ("1.0", "1.1", "1.2") and req["smtp_min"] in ("1.0", "1.1", "1.2")
+        print(action, req["https_min"], req["smtp_min"])
+    else:
+        raise ValueError(action)
+except Exception:
+    sys.exit(1)
+PY
+) || { status_set request failed "The request was invalid and was ignored"; die "invalid request"; }
+read -r -a args <<< "${fields}"
+action=${args[0]}
+args=("${args[@]:1}")
+# the action's entry in STATUS: le_test, le_apply, manual_apply, versions
+section=${action//-/_}
+
+if [[ -n $(conf_get HA_NODES | tr -d '[:space:]') ]]; then
+  status_set "${section}" failed "This gateway is a cluster member: its certificate and TLS settings are managed in crassostrea.conf on each member"
+  die "cluster member"
+fi
+
+LOG=$(mktemp)
+trap 'rm -f "${LOG}"' EXIT
+names_json() {
+  python3 -I -c 'import json, sys; print(json.dumps({"names": sys.argv[1:]}))' "$@"
+}
+
+case ${action} in
+  le-test)
+    status_set le_test running "Asking Let's Encrypt's staging environment for ${args[*]}" "" "$(names_json "${args[@]}")"
+    if "${SF_LIBEXEC}/acme" --staging-test "${args[@]}" > "${LOG}" 2>&1; then
+      status_set le_test ok "Let's Encrypt (staging) validated every name" "${LOG}" "$(names_json "${args[@]}")"
+    else
+      status_set le_test failed "Validation failed, see the log" "${LOG}" "$(names_json "${args[@]}")"
+    fi
+    ;;
+
+  le-apply)
+    hostname=$(conf_get CRASSOSTREA_HOSTNAME)
+    [[ ${args[0]} == "${hostname}" ]] || { status_set le_apply failed "The first name must be the hostname ${hostname}"; die "hostname"; }
+    # a passed staging test of exactly these names, recently
+    if ! python3 -I - "${STATUS}" "${TEST_MAX_AGE}" "${args[@]}" <<'PY'
+import json, sys, time
+path, max_age, names = sys.argv[1], int(sys.argv[2]), sys.argv[3:]
+try:
+    test = json.load(open(path))["le_test"]
+except (OSError, ValueError, KeyError):
+    sys.exit(1)
+sys.exit(0 if test.get("state") == "ok" and sorted(test.get("names", [])) == sorted(names)
+         and time.time() - test.get("at", 0) < max_age else 1)
+PY
+    then
+      status_set le_apply failed "Run a staging test of these names first (it must have passed in the last 24 hours)"
+      die "no matching staging test"
+    fi
+    status_set le_apply running "Requesting the certificate from Let's Encrypt" "" "$(names_json "${args[@]}")"
+    extra=$(IFS=,; echo "${args[*]:1}")
+    conf_set ADDITIONAL_SAN "${extra}"
+    conf_set ONLY_CRASSOSTREA_HOSTNAME n
+    conf_set SKIP_LETS_ENCRYPT n
+    systemctl enable --quiet crassostrea-acme.timer && systemctl start crassostrea-acme.timer
+    install -d -m 0700 "${ACME_HOME}" && touch "${ACME_HOME}/force_renew"
+    "${SF_LIBEXEC}/acme" > "${LOG}" 2>&1
+    acme_result=$?
+    # nginx answers to the certificate's names (system/lib/nginx.sh)
+    CRASSOSTREA_HOSTNAME=${hostname} ADDITIONAL_SAN=${extra} ONLY_CRASSOSTREA_HOSTNAME=n \
+      WEB_PUBLIC_URL=$(conf_get WEB_PUBLIC_URL) nginx_update_names 2>> "${LOG}"
+    if [[ ${acme_result} -eq 0 ]]; then
+      status_set le_apply ok "Let's Encrypt issued and installed the certificate; it renews automatically" "${LOG}" \
+        "$(names_json "${args[@]}")"
+    else
+      status_set le_apply failed "Let's Encrypt did not issue the certificate, the current one stays; renewal retries daily" \
+        "${LOG}" "$(names_json "${args[@]}")"
+    fi
+    ;;
+
+  manual-apply)
+    sha=${args[0]}
+    cert=${UPLOAD}/cert.pem
+    key=${UPLOAD}/key.pem
+    actual=$(cat "${cert}" "${key}" 2> /dev/null | sha256sum | cut -d' ' -f1)
+    if [[ ${actual} != "${sha}" ]]; then
+      status_set manual_apply failed "The uploaded files changed after they were checked; upload them again"
+      die "upload changed"
+    fi
+    (
+      echo "Checking the files with openssl"
+      openssl x509 -in "${cert}" -noout -subject -issuer -enddate || exit 1
+      openssl x509 -in "${cert}" -noout -checkend 0 || { echo "The certificate has expired"; exit 1; }
+      cert_key=$(openssl x509 -in "${cert}" -noout -pubkey | openssl pkey -pubin -outform DER | sha256sum)
+      key_key=$(openssl pkey -in "${key}" -pubout -outform DER | sha256sum)
+      [[ -n ${cert_key} && ${cert_key} == "${key_key}" ]] || { echo "The key does not belong to the certificate"; exit 1; }
+    ) > "${LOG}" 2>&1 || { status_set manual_apply failed "The files did not pass the checks" "${LOG}"; die "invalid files"; }
+    status_set manual_apply running "Installing the certificate"
+    # keep the current files to go back to
+    install -d -m 0700 "${SSL_DIR}/previous"
+    cp -p "${SSL_DIR}/cert.pem" "${SSL_DIR}/previous/cert.pem" 2> /dev/null
+    cp -p "${SSL_DIR}/key.pem" "${SSL_DIR}/previous/key.pem" 2> /dev/null
+    install -m 0644 "${cert}" "${SSL_DIR}/cert.pem.new" && install -m 0600 "${key}" "${SSL_DIR}/key.pem.new" \
+      && mv -f "${SSL_DIR}/cert.pem.new" "${SSL_DIR}/cert.pem" && mv -f "${SSL_DIR}/key.pem.new" "${SSL_DIR}/key.pem"
+    command -v restorecon > /dev/null && restorecon -R "${SSL_DIR}"
+    if ! nginx -t >> "${LOG}" 2>&1; then
+      cp -p "${SSL_DIR}/previous/cert.pem" "${SSL_DIR}/cert.pem"
+      cp -p "${SSL_DIR}/previous/key.pem" "${SSL_DIR}/key.pem"
+      status_set manual_apply failed "nginx did not accept the certificate; the previous one was restored" "${LOG}"
+      die "nginx -t failed"
+    fi
+    conf_set SKIP_LETS_ENCRYPT y
+    systemctl disable --now --quiet crassostrea-acme.timer
+    systemctl reload nginx.service
+    systemctl is-active --quiet postfix.service && postfix reload
+    rm -rf "${UPLOAD}"
+    status_set manual_apply ok "The certificate is installed; nginx and Postfix use it. Let's Encrypt is off: renew it yourself before it expires" "${LOG}"
+    ;;
+
+  versions)
+    https_min=${args[0]}
+    smtp_min=${args[1]}
+    status_set versions running "Applying the TLS versions"
+    conf_set HTTPS_TLS_MIN "${https_min}"
+    conf_set SMTP_TLS_MIN "${smtp_min}"
+    install -d -m 0755 "$(dirname "${TLS_LEGACY_CNF}")"
+    tls_legacy_cnf > "${TLS_LEGACY_CNF}" && chmod 0644 "${TLS_LEGACY_CNF}"
+    (
+      # HTTPS: nginx's protocols, and its OpenSSL configuration (needs a restart)
+      sed -i "s/^\(\s*ssl_protocols \).*;/\1$(tls_nginx_protocols "${https_min}");/" "${NGINX_CONF}"
+      before=$(cat "${TLS_NGINX_DROPIN}" 2> /dev/null)
+      if tls_legacy "${https_min}"; then
+        install -d -m 0755 "$(dirname "${TLS_NGINX_DROPIN}")"
+        HTTPS_TLS_MIN=${https_min} tls_nginx_dropin > "${TLS_NGINX_DROPIN}"
+      else
+        rm -f "${TLS_NGINX_DROPIN}"
+      fi
+      command -v restorecon > /dev/null && restorecon -R "$(dirname "${TLS_LEGACY_CNF}")" "$(dirname "${TLS_NGINX_DROPIN}")" \
+        "${NGINX_CONF}"
+      systemctl daemon-reload
+      if tls_legacy "${https_min}"; then
+        OPENSSL_CONF=${TLS_LEGACY_CNF} nginx -t || exit 1
+      else
+        nginx -t || exit 1
+      fi
+      if [[ ${before} != "$(cat "${TLS_NGINX_DROPIN}" 2> /dev/null)" ]]; then
+        systemctl restart nginx.service
+      else
+        systemctl reload nginx.service
+      fi
+      # inbound SMTP: Postfix reads tls_config_file when its processes start
+      postconf -e "smtpd_tls_protocols=$(tls_postfix_protocols "${smtp_min}")" \
+        "smtpd_tls_mandatory_protocols=$(tls_postfix_protocols "${smtp_min}")" \
+        "tls_config_file=$(tls_postfix_config_file "${smtp_min}")" || exit 1
+      systemctl is-active --quiet postfix.service && postfix reload
+      echo "HTTPS: $(tls_nginx_protocols "${https_min}"); SMTP: $(tls_postfix_protocols "${smtp_min}")"
+    ) > "${LOG}" 2>&1 || { status_set versions failed "Applying the TLS versions failed, see the log" "${LOG}"; die "versions"; }
+    status_set versions ok "HTTPS accepts TLS ${https_min} and newer, inbound SMTP TLS ${smtp_min} and newer" "${LOG}"
+    ;;
+esac

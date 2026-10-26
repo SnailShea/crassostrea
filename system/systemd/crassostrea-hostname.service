@@ -1,0 +1,6 @@
+[Unit]
+Description=Crassostrea: change the hostname (requested in the web UI)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/set-hostname

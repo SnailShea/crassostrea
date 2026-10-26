@@ -1,0 +1,8 @@
+[Unit]
+Description=Crassostrea: update the Sanesecurity signatures for ClamAV
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/clamav-sigs

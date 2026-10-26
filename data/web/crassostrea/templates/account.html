@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Your account</h1><p>Signed in as {{ current_user.username }}</p></div></div>
+<div class="card">
+  <h2>Change password</h2>
+  <form method="post">
+    {{ form.csrf_token }}
+    <div class="form-row">
+      {{ field(form.current, autocomplete="current-password") }}
+      {{ field(form.password, autocomplete="new-password") }}
+      {{ field(form.confirm, autocomplete="new-password") }}
+    </div>
+    <button type="submit" class="btn primary">Change password</button>
+  </form>
+</div>
+{% if current_user.is_admin %}
+<div class="card" id="two-factor">
+  <div class="card-head"><h2>Two-factor login</h2>
+    {% if two_factor %}<span class="badge good">on</span>{% else %}<span class="badge warn">off</span>{% endif %}</div>
+  {% if two_factor %}
+  <p>Your login asks for a code from your authenticator app. {{ recovery_left }} recovery code{{ 's' if recovery_left != 1 }} left.</p>
+  <div class="grid-2">
+    <form method="post" action="{{ url_for('auth.twofactor_recovery_codes') }}">
+      {{ codes_form.csrf_token }}
+      <h3>New recovery codes</h3>
+      {{ field(codes_form.code, autocomplete="one-time-code", inputmode="numeric", help="From your app.") }}
+      <button type="submit" class="btn">Create new recovery codes</button>
+    </form>
+    {% if not two_factor_required %}
+    <form method="post" action="{{ url_for('auth.twofactor_disable') }}">
+      {{ disable_form.csrf_token }}
+      <h3>Turn off</h3>
+      {{ field(disable_form.password, autocomplete="current-password") }}
+      {{ field(disable_form.code, autocomplete="one-time-code", inputmode="numeric") }}
+      <button type="submit" class="btn danger" data-confirm="Turn off two-factor login?">Turn off two-factor login</button>
+    </form>
+    {% endif %}
+  </div>
+  {% else %}
+  <p>Protect your account with a code from an authenticator app in addition to your password.</p>
+  <a class="btn primary" href="{{ url_for('auth.twofactor_setup') }}">Set up two-factor login</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,12 @@
+[Unit]
+Description=Crassostrea: obtain or renew the certificate daily
+
+[Timer]
+Unit=crassostrea-acme.service
+OnBootSec=5min
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

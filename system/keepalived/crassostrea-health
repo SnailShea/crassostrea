@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# keepalived health check (HA_VIP): the floating address stays on a node
+# whose web server, web UI and database copy work and that is not in
+# maintenance (system/libexec/cluster-node). Installed to
+# /usr/libexec/keepalived/, where SELinux runs it unconfined.
+[[ -e /var/lib/crassostrea/cluster/maintenance ]] && exit 1
+curl -fsS -m 3 -o /dev/null http://127.0.0.1:8008/ || exit 1
+curl -fsS -m 3 -o /dev/null http://127.0.0.1:8000/healthz || exit 1
+state=$(mariadb --socket=/var/lib/mysql/mysql.sock -N -B \
+  -e "SHOW GLOBAL STATUS LIKE 'wsrep_local_state_comment'" 2> /dev/null | cut -f2)
+[[ ${state} == Synced ]]

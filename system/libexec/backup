@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# Backups of the gateway (Backups page of the web UI, crassostrea-backup.timer).
+#
+#   backup create [manual|scheduled]   write a backup to BACKUP_DIR
+#   backup prune                       keep the newest backup_keep scheduled backups
+#   backup request                     do what the web UI asked (REQUEST, JSON):
+#                                      {"action": "create"} or {"action": "delete", "name": ...}
+#
+# A backup is a tar.gz with
+#   manifest.json        what is in it, when and where it was made
+#   database.sql         mariadb-dump of DBNAME (the mail log's rows only with
+#                        backup_include_mail_log, the quarantine's with
+#                        backup_include_quarantine: settings of the web UI)
+#   valkey.rdb           Bayes and fuzzy hashes, bans, greylisting (valkey-cli --rdb)
+#   files/...            crassostrea.conf, certificates, the ACME account, the
+#                        DNS-01 credentials, Postfix's extra.cf, the cluster PKI
+# It holds passwords and private keys: root and the web UI (group crassostrea,
+# for downloads) can read it. system/backup.sh restores one.
+set -o pipefail
+
+BACKUP_DIR=${BACKUP_DIR:-/var/lib/crassostrea/backups}
+REQUEST=${REQUEST:-/var/lib/crassostrea/web/backup-request.json}
+SF_CONF=${SF_CONF:-/etc/crassostrea/crassostrea.conf}
+STATUS=${BACKUP_DIR}/status.json
+FILES=(/etc/crassostrea/crassostrea.conf /etc/crassostrea/ssl /etc/crassostrea/acme /var/lib/crassostrea/acme
+       /etc/postfix/extra.cf /etc/pki/crassostrea)
+NAME_RE='^backup-[0-9]{8}-[0-9]{6}-(manual|scheduled)\.tar\.gz$'
+
+log() { echo "$*"; }
+die() { echo "ERROR: $*" >&2; exit 1; }
+
+conf_get() {
+  sed -n "s/^$1=//p" "${SF_CONF}" | tail -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+
+DBNAME=$(conf_get DBNAME)
+DBNAME=${DBNAME:-crassostrea}
+[[ ${DBNAME} =~ ^[A-Za-z0-9_]+$ ]] || die "Invalid DBNAME"
+
+# A setting of the web UI (table settings), or its default
+setting() {
+  local value
+  value=$(mariadb -N -B "${DBNAME}" -e "SELECT value FROM settings WHERE \`key\` = '$1'" 2> /dev/null)
+  echo "${value:-$2}"
+}
+
+status_set() {
+  # status_set STATE MESSAGE [NAME]
+  install -d -m 0750 -g crassostrea "${BACKUP_DIR}" 2> /dev/null || install -d -m 0750 "${BACKUP_DIR}"
+  python3 -I - "${STATUS}" "$@" <<'PY'
+import json, os, sys, tempfile, time
+path, state, message = sys.argv[1:4]
+entry = {"state": state, "message": message, "at": int(time.time())}
+if len(sys.argv) > 4:
+    entry["name"] = sys.argv[4]
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+with os.fdopen(fd, "w") as handle:
+    json.dump(entry, handle)
+os.chmod(tmp, 0o644)
+os.replace(tmp, path)
+PY
+}
+
+create() {
+  local label=${1:-manual} stamp name include_log include_quarantine ignore=()
+  [[ ${label} == manual || ${label} == scheduled ]] || die "Label must be manual or scheduled"
+  stamp=$(date -u +%Y%m%d-%H%M%S)
+  name="backup-${stamp}-${label}.tar.gz"
+  install -d -m 0750 -g crassostrea "${BACKUP_DIR}" 2> /dev/null || install -d -m 0750 "${BACKUP_DIR}" \
+    || die "Cannot create ${BACKUP_DIR}"
+  status_set running "Creating ${name}" "${name}"
+  # global: the EXIT trap runs after this function returned
+  tmp=$(mktemp -d "${BACKUP_DIR}/.tmp.XXXXXX") || die "Cannot create a temporary directory"
+  trap 'rm -rf "${tmp}"' EXIT
+  install -d "${tmp}/files"
+
+  include_log=$(setting backup_include_mail_log 0)
+  include_quarantine=$(setting backup_include_quarantine 1)
+  [[ ${include_log} == 1 ]] || ignore+=(--ignore-table-data="${DBNAME}.mail_log")
+  [[ ${include_quarantine} == 1 ]] || ignore+=(--ignore-table-data="${DBNAME}.quarantine")
+  log "Dumping the database ${DBNAME}"
+  # one transaction: a consistent snapshot without locking the tables
+  if ! mariadb-dump --single-transaction --default-character-set=utf8mb4 --routines --events \
+      --max-allowed-packet=192M "${ignore[@]}" "${DBNAME}" > "${tmp}/database.sql"; then
+    status_set failed "The database could not be dumped" "${name}"
+    die "mariadb-dump failed"
+  fi
+
+  log "Copying Valkey's data"
+  local valkey=no
+  if valkey-cli -h 127.0.0.1 -p 6379 -a "$(conf_get REDISPASS)" --no-auth-warning --rdb "${tmp}/valkey.rdb" \
+      > /dev/null 2>&1 && [[ -s ${tmp}/valkey.rdb ]]; then
+    valkey=yes
+  else
+    rm -f "${tmp}/valkey.rdb"
+    log "Valkey's data could not be copied (is valkey running?): left out"
+  fi
+
+  local path copied=()
+  for path in "${FILES[@]}"; do
+    if [[ -e ${path} ]]; then
+      install -d "${tmp}/files$(dirname "${path}")"
+      cp -a "${path}" "${tmp}/files${path}"
+      copied+=("${path}")
+    fi
+  done
+
+  python3 -I - "${tmp}/manifest.json" "${label}" "$(conf_get CRASSOSTREA_HOSTNAME)" "${DBNAME}" \
+      "${include_log}" "${include_quarantine}" "${valkey}" "${copied[@]}" <<'PY'
+import json, socket, sys, time
+path, label, hostname, dbname, include_log, include_quarantine, valkey, *files = sys.argv[1:]
+json.dump({"format": 1, "created_at": int(time.time()), "label": label, "hostname": hostname,
+           "host": socket.gethostname(), "database": dbname, "mail_log": include_log == "1",
+           "quarantine": include_quarantine == "1", "valkey": valkey == "yes", "files": files},
+          open(path, "w"), indent=1)
+PY
+
+  tar -czf "${tmp}/${name}" -C "${tmp}" manifest.json database.sql $([[ ${valkey} == yes ]] && echo valkey.rdb) files \
+    || { status_set failed "The archive could not be written" "${name}"; die "tar failed"; }
+  chmod 0640 "${tmp}/${name}"
+  chgrp crassostrea "${tmp}/${name}" 2> /dev/null
+  mv "${tmp}/${name}" "${BACKUP_DIR}/${name}"
+  local size
+  size=$(du -h "${BACKUP_DIR}/${name}" | cut -f1)
+  status_set ok "Created ${name} (${size})" "${name}"
+  log "Created ${BACKUP_DIR}/${name} (${size})"
+}
+
+prune() {
+  local keep name old
+  keep=$(setting backup_keep 7)
+  [[ ${keep} =~ ^[0-9]+$ && ${keep} -ge 1 ]] || keep=7
+  # names sort by time; only scheduled backups expire
+  mapfile -t old < <(find "${BACKUP_DIR}" -maxdepth 1 -name 'backup-*-scheduled.tar.gz' -printf '%f\n' \
+    | sort -r | tail -n +"$((keep + 1))")
+  for name in "${old[@]}"; do
+    rm -f "${BACKUP_DIR:?}/${name}" && log "Removed the old backup ${name}"
+  done
+}
+
+request() {
+  [[ -f ${REQUEST} ]] || return 0
+  local data action name
+  data=$(cat "${REQUEST}")
+  # consumed even if it is refused, so the path unit does not start this again
+  rm -f "${REQUEST}"
+  read -r action name < <(python3 -I -c '
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+    print(d.get("action", ""), d.get("name", "") or "-")
+except Exception:
+    print("invalid -")' "${data}")
+  case ${action} in
+    create) create manual ;;
+    delete)
+      if [[ ! ${name} =~ ${NAME_RE} || ! -f ${BACKUP_DIR}/${name} ]]; then
+        status_set failed "There is no backup ${name}"
+        die "unknown backup ${name}"
+      fi
+      rm -f "${BACKUP_DIR:?}/${name}"
+      status_set ok "Deleted ${name}" "${name}"
+      ;;
+    *) status_set failed "The request was invalid and was ignored"; die "invalid request" ;;
+  esac
+}
+
+case ${1:-} in
+  create) create "${2:-manual}" ;;
+  prune) prune ;;
+  request) request ;;
+  *) echo "Usage: $0 create [manual|scheduled] | prune | request" >&2; exit 2 ;;
+esac

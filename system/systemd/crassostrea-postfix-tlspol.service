@@ -1,0 +1,33 @@
+[Unit]
+Description=Crassostrea: postfix-tlspol, DANE/MTA-STS policies for Postfix (127.0.0.1:8642)
+After=network-online.target unbound.service
+Wants=unbound.service
+
+[Service]
+DynamicUser=yes
+StateDirectory=postfix-tlspol
+ExecStart=/usr/local/bin/postfix-tlspol -config /etc/postfix-tlspol/config.yaml
+Restart=always
+RestartSec=5
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

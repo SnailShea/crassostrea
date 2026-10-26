@@ -1,0 +1,85 @@
+# The installation ISO (iso/build.sh): AlmaLinux 10 minimal with the gateway.
+# - "Run workflow" (Actions tab): builds the ISO of the chosen branch and
+#   keeps it as an artifact for 7 days.
+# - A tag v*: builds it and attaches it to the tag's release.
+# - Pull requests that change iso/: check the kickstart and the scripts only.
+name: Installation ISO
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: ["iso/**", ".github/workflows/iso.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: iso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Shell scripts
+        run: |
+          bash -n iso/build.sh iso/firstboot.sh
+          shellcheck iso/build.sh iso/firstboot.sh
+      - name: Kickstart
+        run: |
+          grep -v '^%include ' iso/crassostrea.ks > "${RUNNER_TEMP}/validate.ks"
+          docker run --rm -v "${RUNNER_TEMP}:/ks:ro" docker.io/library/almalinux:10 \
+            bash -c 'dnf -q -y install pykickstart > /dev/null && ksvalidator -v RHEL10 /ks/validate.ks'
+
+  iso:
+    if: github.event_name != 'pull_request'
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write  # attach the ISO to the release of a tag
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the installed checkout keeps the history, update.sh pulls
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - name: Find the AlmaLinux release
+        id: base
+        run: |
+          name=$(curl -fsSL https://repo.almalinux.org/almalinux/10/isos/x86_64/CHECKSUM \
+            | sed -n 's/^SHA256 (\(AlmaLinux-10\.[0-9]*-x86_64-minimal\.iso\)) = .*/\1/p' | sort -V | tail -1)
+          echo "name=${name}" >> "${GITHUB_OUTPUT}"
+      - name: Cache the AlmaLinux ISO
+        uses: actions/cache@v4
+        with:
+          path: iso/cache
+          key: ${{ steps.base.outputs.name }}
+      - name: Build
+        env:
+          REF: ${{ github.ref_name }}
+          ORIGIN: ${{ github.server_url }}/${{ github.repository }}.git
+          # a tag's ISO follows main; a branch's ISO follows that branch
+          ISO_BRANCH: ${{ github.ref_type == 'branch' && github.ref_name || 'main' }}
+        run: iso/build.sh --engine docker --out dist --ref "${REF}" --origin "${ORIGIN}"
+      - name: Keep the ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: crassostrea-iso
+          path: dist/
+          retention-days: 7
+          compression-level: 0
+      - name: Attach to the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "${TAG}" > /dev/null 2>&1 || gh release create "${TAG}" --title "${TAG}" --generate-notes
+          gh release upload "${TAG}" dist/*.iso dist/*.sha256 --clobber

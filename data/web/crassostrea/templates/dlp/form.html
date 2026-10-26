@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}{{ rule.name if rule else "Add rule" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ rule.name if rule else "Add rule" }}</h1>
+    <p><a href="{{ url_for('dlp.index') }}">‹ Data loss prevention</a></p>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('dlp.edit', rule_id=rule.id) if rule else url_for('dlp.create') }}" class="card">
+  {{ form.csrf_token }}
+  {{ field(form.name, placeholder="Card numbers") }}
+  {{ field(form.detector, help="Card numbers need a valid check digit, IBANs a valid checksum, social security numbers the form 123-45-6789.") }}
+  {{ field(form.pattern, rows=5, class="mono",
+           help="Keywords: one word or phrase per line, found anywhere, ignoring case. Regular expression: PCRE, (?i) ignores case. Not used by the other detectors.") }}
+  {{ field(form.min_matches, help="How many different values must be found, e.g. 5 card numbers for a list.") }}
+  {{ field(form.sender, placeholder="example.com or alice@example.com", help="Empty: every sender.") }}
+  {{ field(form.action) }}
+  {{ check(form.active) }}
+  {{ field(form.comment) }}
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+{% endblock %}

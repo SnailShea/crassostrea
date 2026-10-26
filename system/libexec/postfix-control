@@ -1,0 +1,104 @@
+#!/usr/bin/python3 -I
+"""Mail queue actions for the web UI (crassostrea-postfix-control@.service).
+
+Socket-activated per connection (Accept=yes): one JSON request is read from
+stdin, one JSON response written to stdout. Runs as root because postsuper
+and postcat need it; the socket is only accessible to the crassostrea group.
+Only the actions below are accepted, queue IDs are validated and commands
+run without a shell (IDs for postsuper are passed on stdin, not as options).
+"""
+import json
+import re
+import subprocess
+import sys
+
+# Short (hex) and long (enable_long_queue_ids) Postfix queue IDs
+QUEUE_ID = re.compile(r"^[0-9A-Za-z]{6,32}$")
+MAX_IDS = 1000
+MAX_REQUEST = 256 * 1024
+MAX_OUTPUT = 4 * 1024 * 1024
+TIMEOUT = 60
+
+POSTQUEUE = "/usr/sbin/postqueue"
+POSTSUPER = "/usr/sbin/postsuper"
+POSTCAT = "/usr/sbin/postcat"
+SUPER_FLAGS = {"hold": "-h", "unhold": "-H", "delete": "-d"}
+
+
+class RequestError(ValueError):
+    pass
+
+
+def plan(request):
+    """[(argv, stdin text or None)] for a request; raises RequestError."""
+    if not isinstance(request, dict):
+        raise RequestError("request must be an object")
+    action = request.get("action")
+    ids = request.get("ids") or []
+    if not isinstance(ids, list) or len(ids) > MAX_IDS or not all(isinstance(i, str) and QUEUE_ID.match(i)
+                                                                  for i in ids):
+        raise RequestError("invalid queue IDs")
+    if action == "list":
+        return [([POSTQUEUE, "-j"], None)]
+    if action == "flush":
+        return [([POSTQUEUE, "-f"], None)]
+    if action == "super_delete":
+        return [([POSTSUPER, "-d", "ALL"], None)]
+    if not ids:
+        raise RequestError("no queue IDs given")
+    if action == "cat":
+        if len(ids) != 1:
+            raise RequestError("cat takes exactly one queue ID")
+        return [([POSTCAT, "-q", ids[0]], None)]
+    if action == "deliver":
+        return [([POSTQUEUE, "-i", queue_id], None) for queue_id in ids]
+    if action in SUPER_FLAGS:
+        return [([POSTSUPER, SUPER_FLAGS[action], "-"], "".join(f"{i}\n" for i in ids))]
+    raise RequestError("unknown action")
+
+
+def parse_queue(text):
+    queue = []
+    for line in text.splitlines():
+        try:
+            queue.append(json.loads(line))
+        except ValueError:
+            continue
+    return queue
+
+
+def handle(raw, run=subprocess.run):
+    """Response object for one raw request (bytes)."""
+    try:
+        request = json.loads(raw)
+        steps = plan(request)
+    except (ValueError, RecursionError) as exc:
+        return {"ok": False, "error": str(exc) if isinstance(exc, RequestError) else "invalid request"}
+    output = []
+    for argv, stdin in steps:
+        try:
+            result = run(argv, input=stdin, capture_output=True, text=True, timeout=TIMEOUT, check=False)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return {"ok": False, "error": f"{argv[0]} failed: {exc}"}
+        if result.returncode != 0:
+            return {"ok": False, "error": (result.stderr or result.stdout).strip()[:500] or f"{argv[0]} failed"}
+        output.append(result.stdout)
+    text = "".join(output)[:MAX_OUTPUT]
+    response = {"ok": True, "output": text}
+    if request["action"] == "list":
+        response = {"ok": True, "queue": parse_queue(text)}
+    return response
+
+
+def main():
+    raw = sys.stdin.buffer.read(MAX_REQUEST + 1)
+    if len(raw) > MAX_REQUEST:
+        response = {"ok": False, "error": "request too large"}
+    else:
+        response = handle(raw)
+    sys.stdout.write(json.dumps(response))
+    sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

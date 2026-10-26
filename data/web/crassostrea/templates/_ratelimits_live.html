@@ -1,0 +1,30 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if valkey_error %}<div class="alert warning">{{ valkey_error }}</div>{% endif %}
+<div class="card">
+  <h2>Deferred in the last 7 days</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Limit</th><th>Server or recipient</th><th class="num">Deferred</th><th>Last</th><th></th></tr></thead>
+    <tbody>
+    {% for h in hits %}
+      <tr>
+        <td>{{ h.limit }} {{ kinds.get(h.kind, h.kind) }} per {{ period_name(h.seconds) }}</td>
+        <td class="mono">{{ h.key }}</td>
+        <td class="num">{{ h.count }}</td>
+        <td class="nowrap">{{ h.at|datetime }}</td>
+        <td class="right">
+          <form method="post" action="{{ url_for('ratelimits.reset') }}" class="inline" data-async>
+            {{ csrf() }}<input type="hidden" name="kind" value="{{ h.kind }}"><input type="hidden" name="key" value="{{ h.key }}">
+            <button type="submit" class="link-button">Reset</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">Nothing was deferred by a rate limit.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">Reset clears the counts of a server or recipient: its mail is accepted again at once.</p>
+</div>

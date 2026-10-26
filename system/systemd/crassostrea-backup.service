@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: backup (database, Valkey, configuration, certificates)
+After=mariadb.service valkey.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/backup create scheduled
+ExecStartPost=/usr/local/libexec/crassostrea/backup prune
+Nice=10
+IOSchedulingClass=idle

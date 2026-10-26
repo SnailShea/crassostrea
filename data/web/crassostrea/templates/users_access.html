@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}{{ admin.username }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ admin.username }}</h1>
+    <p><a href="{{ url_for('users.index') }}">‹ Administrators</a></p>
+  </div>
+</div>
+<form method="post" class="card">
+  {{ form.csrf_token }}
+  {{ field(form.role) }}
+  {{ field(form.domains, size=8, help="Hold Ctrl (⌘ on a Mac) to choose several. Only for domain administrators.") }}
+  <p class="muted">A domain administrator sees and manages only the mail of its domains: their quarantine, the
+    mail log, the domains' settings (not adding or deleting domains), their mailbox users, statistics and DMARC
+    &amp; TLS reports.</p>
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+{% endblock %}

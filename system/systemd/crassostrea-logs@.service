@@ -1,0 +1,22 @@
+[Unit]
+Description=Crassostrea: read the journal of a service (Logs page)
+
+[Service]
+# root: the journal is readable by root and systemd-journal only. The helper
+# reads only the units it lists itself (see the script).
+ExecStart=/usr/local/libexec/crassostrea/log-reader
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=60
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+SystemCallArchitectures=native

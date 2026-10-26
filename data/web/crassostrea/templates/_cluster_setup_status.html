@@ -1,0 +1,13 @@
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if setup or busy %}
+{% set badges = {'ok': 'good', 'failed': 'bad', 'running': 'info'} %}
+<div class="card">
+  <div class="card-head"><h2>{{ 'Joining the cluster' if (setup or {}).get('action') == 'join' else 'Creating the cluster' }}</h2>
+    {% if busy and (not setup or setup.state != 'running') %}<span class="badge info">starting…</span>
+    {% elif setup %}<span class="badge {{ badges.get(setup.state, '') }}">{{ {'ok': 'done', 'failed': 'failed', 'running': 'running'}.get(setup.state, setup.state) }}</span>{% endif %}</div>
+  {% if setup %}
+  <p>{{ setup.message }} <span class="muted">({{ setup.at|datetime }})</span></p>
+  {% if setup.log %}<details {{ 'open' if setup.state == 'failed' }}><summary>Log</summary><pre class="log">{{ setup.log }}</pre></details>{% endif %}
+  {% endif %}
+</div>
+{% endif %}

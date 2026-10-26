@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Downloads the Heinlein Support SpamAssassin rules used by the Rspamd
+# spamassassin module and reloads Rspamd when they changed
+# (crassostrea-sa-rules.service, daily timer).
+
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "${TMP_DIR}"' EXIT
+
+RULES=/etc/rspamd/custom/sa-rules
+
+if [[ ! -f ${RULES} ]]; then
+  HASH_SA_RULES=0
+else
+  HASH_SA_RULES=$(md5sum < "${RULES}" | cut -d' ' -f1)
+fi
+
+RULES_VERSION=$(dig txt 1.4.3.spamassassin.heinlein-support.de +short | tr -d '"' | tr -dc '0-9')
+if [[ -z ${RULES_VERSION} ]]; then
+  echo "Cannot determine SA rules version. Exiting."
+  exit 0
+fi
+
+if curl -fsS --retry 4 --max-time 60 -o "${TMP_DIR}/sa-rules.tar.gz" \
+    "https://www.spamassassin.heinlein-support.de/${RULES_VERSION}.tar.gz"; then
+  if gzip -t "${TMP_DIR}/sa-rules.tar.gz"; then
+    mkdir -p "${TMP_DIR}/rules"
+    tar xfz "${TMP_DIR}/sa-rules.tar.gz" -C "${TMP_DIR}/rules"
+    cat "${TMP_DIR}"/rules/*cf > "${TMP_DIR}/sa-rules"
+    sed -i -e 's/\([^\\]\)\$\([^\/]\)/\1\\$\2/g' "${TMP_DIR}/sa-rules"
+  else
+    echo "Downloaded SA rules are corrupt. Exiting."
+    exit 0
+  fi
+else
+  echo "Failed to download SA rules. Exiting."
+  exit 0
+fi
+
+if [[ "$(md5sum < "${TMP_DIR}/sa-rules" | cut -d' ' -f1)" != "${HASH_SA_RULES}" ]]; then
+  cat "${TMP_DIR}/sa-rules" > "${RULES}"
+  echo "SA rules updated, reloading Rspamd..."
+  systemctl reload rspamd.service
+else
+  echo "SA rules unchanged."
+fi

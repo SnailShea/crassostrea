@@ -1,0 +1,123 @@
+{% from "_macros.html" import action_badge %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% for error in errors %}<div class="alert warning">{{ error }}</div>{% endfor %}
+{% set t = data.totals %}
+{% set tone = {'clean': 'good', 'spam': 'warn', 'rejected': 'bad', 'deferred': ''} %}
+<div class="stats">
+  <div class="stat"><div class="label">Messages ({{ t.bytes|filesize }})</div><div class="value">{{ "{:,}".format(t.total) }}</div></div>
+  {% for key, label in categories.items() %}
+  <div class="stat {{ tone[key] }}"><div class="label">{{ label }} ({{ ((100 * t[key] / t.total)|round(1)) if t.total else 0 }}%)</div>
+    <div class="value">{{ "{:,}".format(t[key]) }}</div></div>
+  {% endfor %}
+  <div class="stat {{ 'bad' if t.viruses }}"><div class="label">Viruses</div><div class="value">{{ "{:,}".format(t.viruses) }}</div></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Over time</h2>
+    <span class="muted small">one bar per {{ {1: 'hour', 6: '6 hours', 24: 'day', 720: '30 days'}[data.bucket_hours] }}, at most {{ chart.peak }} messages</span></div>
+  <svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Messages over time">
+    <line class="axis" x1="0" y1="{{ chart.height }}" x2="{{ chart.width }}" y2="{{ chart.height }}"></line>
+    {% for bar in chart.bars %}
+    <g><title>{{ bar.start|datetime }}: {{ bar.total }} message(s)</title>
+      {% for cat, y, h in bar.segments %}<rect class="{{ cat }}" x="{{ bar.x }}" y="{{ y }}" width="{{ bar.w }}" height="{{ h }}"></rect>{% endfor %}
+    </g>
+    {% endfor %}
+  </svg>
+  {# outside the SVG, which scales with the page: the times keep the text size #}
+  <div class="chart-times">
+    {% for bar in chart.bars %}{% if loop.first or loop.last or loop.index0 == (chart.bars|length // 2) %}
+    <span>{{ bar.start|localtime('%H:%M' if data.bucket_hours < 24 else '%d %b') }}</span>
+    {% endif %}{% endfor %}
+  </div>
+  <div class="legend">{% for key, label in categories.items() %}<span><i class="{{ key }}"></i>{{ label }}</span>{% endfor %}</div>
+</div>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-head"><h2>Quarantine</h2><a href="{{ url_for('quarantine.index', domain=domain or None) }}">Open</a></div>
+    <dl class="props">
+      <dt>Last 24 hours</dt><dd>{{ quarantine.last_24h }}</dd>
+      <dt>Total</dt><dd>{{ quarantine.total }}</dd>
+    </dl>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>Domains</h2><a href="{{ url_for('domains.index') }}">Manage</a></div>
+    <dl class="props">
+      <dt>Active</dt><dd>{{ domain_counts.active }}</dd>
+      <dt>Configured</dt><dd>{{ domain_counts.total }}</dd>
+      {% if learned is not none %}<dt>Messages learned</dt><dd>{{ "{:,}".format(learned) }}</dd>{% endif %}
+    </dl>
+    {% if domain_counts.total == 0 and current_user.is_full_admin %}<p class="muted">Add a domain to start accepting mail.</p>{% endif %}
+  </div>
+  {% if health %}
+  <div class="card">
+    <div class="card-head"><h2>Health</h2><a href="{{ url_for('monitoring.index') }}">Services</a></div>
+    <dl class="props">
+      {% for name, ok in health.items() %}
+      <dt>{{ name }}</dt><dd><span class="status-dot {{ 'good' if ok else 'bad' }}"></span>{{ "OK" if ok else "unavailable" }}</dd>
+      {% endfor %}
+    </dl>
+  </div>
+  {% endif %}
+  <div class="card">
+    <h2>Busiest domains</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Domain</th><th class="num">Messages</th></tr></thead>
+      <tbody>
+      {% for name, count in data.top %}
+        <tr><td><a href="{{ url_for('dashboard.index', range=range_key, direction=direction or None, domain=name) }}">{{ name }}</a></td><td class="num">{{ count }}</td></tr>
+      {% else %}
+        <tr><td colspan="2" class="empty">No mail in this period.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+{% if cluster %}
+<div class="card">
+  <div class="card-head"><h2>Cluster</h2><a href="{{ url_for('cluster.index') }}">Members</a></div>
+  <dl class="props">
+    <dt>This node</dt><dd class="mono">{{ cluster.node }}</dd>
+    {% if cluster.problems is defined and cluster.problems is not none %}
+    <dt>Problems</dt><dd><span class="status-dot {{ 'warn' if cluster.problems else 'good' }}"></span>{% if cluster.problems %}<a href="{{ url_for('cluster.index') }}">{{ cluster.problems }}</a>{% else %}none{% endif %}</dd>
+    {% endif %}
+    {% if cluster.database %}
+    {% set db_ok = cluster.database.status == 'Primary' and cluster.database.state == 'Synced' %}
+    <dt>Database</dt>
+    <dd><span class="status-dot {{ ('good' if cluster.database.size >= cluster.members else 'warn') if db_ok else 'bad' }}"></span>{{ cluster.database.status }} component with {{ cluster.database.size }} of {{ cluster.members }} members; this node {{ cluster.database.state }}</dd>
+    {% endif %}
+    {% if cluster.valkey %}
+    <dt>Valkey</dt>
+    <dd><span class="status-dot {{ 'good' if cluster.valkey.in_sync >= cluster.valkey.expected else 'warn' }}"></span>master {{ cluster.valkey.master or 'unknown' }}, {{ cluster.valkey.in_sync }} of {{ cluster.valkey.expected }} replicas in sync</dd>
+    {% endif %}
+  </dl>
+  <p class="muted">The statistics are those of all nodes; the services (Monitoring) and the mail queue are those of
+    this node.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-head"><h2>Recent mail</h2><a href="{{ url_for('maillog.index') }}">Mail log</a></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Time</th><th>Action</th><th class="num">Score</th><th>From</th><th>To</th><th>Subject</th></tr></thead>
+    <tbody>
+    {% for entry in recent %}
+      <tr>
+        <td class="nowrap">{{ entry.created_at|datetime }}</td>
+        <td>{{ action_badge(entry.action) }}</td>
+        <td class="num">{{ '%.2f'|format(entry.score) }}</td>
+        <td class="truncate">{{ entry.sender or '<>' }}</td>
+        <td class="truncate">{{ entry.rcpt_list|join(', ') }}</td>
+        <td class="truncate"><a href="{{ url_for('maillog.show', entry_id=entry.id) }}">{{ entry.subject or '(no subject)' }}</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No messages scanned yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>

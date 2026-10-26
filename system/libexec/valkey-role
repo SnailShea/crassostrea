@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Valkey role of a cluster node (ExecStartPre of valkey.service, as root).
+#
+# Asks the Sentinels of the cluster which node is the master and writes
+# ROLE_FILE, included by the Valkey configuration: "replicaof <master>" if
+# another node is the master, nothing otherwise. A node that was down while
+# another one took over therefore comes back as a replica instead of a
+# second master with outdated data. A node in maintenance
+# (system/libexec/cluster-node) also gets "replica-priority 0": Sentinel
+# never makes it the master.
+#
+#   valkey-role           write ROLE_FILE
+#   valkey-role --print   print the master's address (empty if unknown)
+#
+# Environment: crassostrea.conf (CRASSOSTREA_HOSTNAME, HA_NODES, HA_WITNESS,
+# REDISPASS).
+set -o pipefail
+
+ROLE_FILE=${ROLE_FILE:-/var/lib/valkey/crassostrea-role.conf}
+MAINTENANCE=${CLUSTER_MAINTENANCE:-/var/lib/crassostrea/cluster/maintenance}
+PKI=${SF_PKI:-/etc/pki/crassostrea}
+VALKEY_PORT=6380
+SENTINEL_PORT=26379
+
+self=""
+members=()
+for entry in ${HA_NODES//,/ } ${HA_WITNESS//,/ }; do
+  name=${entry%%=*}
+  addr=${entry#*=}
+  members+=("${addr}")
+  [[ ${name,,} == "${CRASSOSTREA_HOSTNAME,,}" ]] && self=${addr}
+done
+
+# The master most Sentinels report
+master() {
+  local addr answer
+  for addr in "${members[@]}"; do
+    answer=$(timeout 3 valkey-cli --tls --cacert "${PKI}/ca.crt" --cert "${PKI}/node.crt" --key "${PKI}/node.key" \
+      -h "${addr}" -p "${SENTINEL_PORT}" -a "${REDISPASS}" --no-auth-warning --raw \
+      SENTINEL get-master-addr-by-name crassostrea 2> /dev/null | head -1)
+    [[ ${answer} =~ ^[0-9.]+$ ]] && echo "${answer}"
+  done | sort | uniq -c | sort -rn | awk 'NR == 1 {print $2}'
+}
+
+if [[ $1 == --print ]]; then
+  master
+  exit 0
+fi
+
+current=$(master)
+tmp=${ROLE_FILE}.tmp
+{
+  echo "# Written by valkey-role before valkey starts - do not edit"
+  if [[ -n ${current} && ${current} != "${self}" ]]; then
+    echo "replicaof ${current} ${VALKEY_PORT}"
+  fi
+  if [[ -e ${MAINTENANCE} ]]; then
+    echo "replica-priority 0"
+  fi
+} > "${tmp}" || exit 1
+chmod 0640 "${tmp}"
+chgrp valkey "${tmp}" 2> /dev/null
+mv -f "${tmp}" "${ROLE_FILE}" || exit 1
+if [[ -z ${current} ]]; then
+  echo "No Sentinel reachable: starting as master (Sentinel demotes this node if another one is master)"
+elif [[ ${current} == "${self}" ]]; then
+  echo "The Sentinels report this node (${self}) as master"
+else
+  echo "Starting as a replica of ${current}"
+fi

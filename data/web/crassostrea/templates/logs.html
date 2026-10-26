@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Logs</h1>
+    <p>The most recent lines of the gateway's services, newest first.{% if config.CLUSTER_NODES %} The Postfix log
+      shows all nodes, the others this node ({{ hostname }}).{% endif %}</p>
+  </div>
+</div>
+
+<nav class="log-sources" aria-label="Service">
+  {% for key, name, _ in sources %}
+  <a href="{{ url_for('logs.index', service=key if key != 'postfix' else None) }}" class="{{ 'active' if key == source }}"{% if key == source %} aria-current="page"{% endif %}>{{ name }}</a>
+  {% endfor %}
+</nav>
+
+<div class="card">
+  <div class="card-head"><h2>{{ label }}</h2><span class="muted small">{{ description }}</span></div>
+  <form method="get" class="filters">
+    {% if source != 'postfix' %}<input type="hidden" name="service" value="{{ source }}">{% endif %}
+    <input type="search" name="q" value="{{ request.args.get('q', '') }}"
+           placeholder="{{ 'Queue ID, address, IP…' if source == 'postfix' else 'Text in the message or unit…' }}">
+    {% if source != 'postfix' %}
+    <select name="priority" aria-label="Priority">
+      {% for key, text in priorities %}<option value="{{ key }}" {{ 'selected' if key == priority }}>{{ text }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <button type="submit" class="btn">Filter</button>
+  </form>
+  <div class="live" data-live data-live-refresh="10">
+{% include "_logs_live.html" %}
+  </div>
+</div>
+{% endblock %}

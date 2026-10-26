@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+{% block title %}Mail queue{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Mail queue{% if config.CLUSTER_NODES %} <span class="muted">on {{ config.HOSTNAME }}</span>{% endif %}</h1>
+    <p>Messages waiting for delivery to the downstream servers or the internet.</p>
+  </div>
+  <form method="post" action="{{ url_for('queue.action') }}" class="actions" data-async>
+    {{ csrf() }}
+    <button type="submit" name="action" value="flush" class="btn">Flush queue</button>
+    <button type="submit" name="action" value="super_delete" class="btn danger"
+            data-confirm="Delete ALL queued messages? This cannot be undone.">Delete all</button>
+  </form>
+</div>
+<div class="live" data-live data-live-refresh="10">
+{% include "queue/_live.html" %}
+</div>
+{% endblock %}

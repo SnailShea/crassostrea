@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: send DMARC aggregate reports every day
+
+[Timer]
+OnCalendar=*-*-* 01:15
+RandomizedDelaySec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

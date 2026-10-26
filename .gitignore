@@ -1,0 +1,16 @@
+# Python: bytecode, the virtual environment and pytest's cache of the local
+# development setup (data/web)
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local certificates and keys, never committed
+data/assets/
+
+# Installation ISO builds (iso/build.sh)
+iso/out/
+iso/cache/
+
+# Claude code
+.claude/

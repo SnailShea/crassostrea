@@ -1,0 +1,29 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if error %}<div class="alert warning">{{ error }}</div>{% endif %}
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Network</th><th>Banned until</th><th></th></tr></thead>
+    <tbody>
+    {% for ban in bans %}
+      <tr>
+        <td class="mono">{{ ban.network }}</td>
+        <td>{% if ban.permanent %}<span class="badge bad">permanent</span>{% else %}{{ ban.until|datetime }}{% endif %}</td>
+        <td class="right">
+          {% if ban.unban_queued %}<span class="badge info">unban queued</span>
+          {% elif not ban.permanent %}
+          <form method="post" action="{{ url_for('logs.unban') }}" class="inline" data-async>
+            {{ csrf() }}<input type="hidden" name="network" value="{{ ban.network }}">
+            <button type="submit" class="link-button">Unban</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">No banned hosts.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>

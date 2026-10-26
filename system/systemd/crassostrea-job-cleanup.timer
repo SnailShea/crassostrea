@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: daily cleanup (quarantine and mail log retention, tokens, logs)
+
+[Timer]
+Unit=crassostrea-job@cleanup.service
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

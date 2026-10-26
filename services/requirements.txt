@@ -1,0 +1,6 @@
+# Python packages of netfilter and olefy, installed into the same venv as the
+# web UI (/usr/local/lib/crassostrea/venv). nftables comes from the system
+# (python3-nftables; the venv sees site-packages), dnspython from the web
+# UI's requirements.
+oletools==0.60.2
+python-magic==0.4.27

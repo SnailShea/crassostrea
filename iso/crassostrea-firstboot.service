@@ -1,0 +1,22 @@
+[Unit]
+Description=Crassostrea: set up the gateway (first boot)
+After=network-online.target systemd-user-sessions.service plymouth-quit-wait.service
+Wants=network-online.target
+Before=getty@tty1.service
+ConditionPathExists=!/var/lib/crassostrea/firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/crassostrea-firstboot
+# on the console, before its login prompt
+StandardInput=tty
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+RemainAfterExit=yes
+TimeoutSec=0
+
+[Install]
+WantedBy=multi-user.target

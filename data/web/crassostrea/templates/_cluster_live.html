@@ -1,0 +1,117 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% for error in errors %}<div class="alert danger">{{ error }}</div>{% endfor %}
+{% if state %}
+{% set level_class = {'ok': 'good', 'warning': 'warn', 'critical': 'bad'} %}
+{% set reporting = state.members|selectattr('reporting')|list %}
+<div class="stats">
+  <div class="stat {{ level_class[state.level] }}"><div class="label">Cluster</div>
+    <div class="value">{{ {'ok': 'Healthy', 'warning': 'Degraded', 'critical': 'Critical'}[state.level] }}</div></div>
+  <div class="stat {{ 'bad' if state.votes.present < state.votes.quorum else 'warn' if state.votes.present < state.votes.total }}">
+    <div class="label">Votes in the database cluster (majority {{ state.votes.quorum }})</div>
+    <div class="value">{{ state.votes.present }} of {{ state.votes.total }}</div></div>
+  <div class="stat {{ 'warn' if reporting|length < state.members|length }}"><div class="label">Nodes reporting</div>
+    <div class="value">{{ reporting|length }} of {{ state.members|length }}</div></div>
+  <div class="stat {{ 'bad' if not state.valkey_master }}"><div class="label">Valkey master</div>
+    <div class="value text mono">{{ state.valkey_master or 'none' }}</div></div>
+  {% if state.vip %}
+  <div class="stat {{ 'warn' if state.vip.holders|length != 1 }}"><div class="label">Floating address {{ state.vip.address }}</div>
+    <div class="value text mono">{{ state.vip.holders|join(', ') or 'on no node' }}</div></div>
+  {% endif %}
+</div>
+
+{% if state.votes.total < 3 %}
+<div class="alert warning">The cluster has {{ state.votes.total }} vote{{ 's' if state.votes.total != 1 }}: it
+  survives the failure of a member only from 3 votes on. Add a node (or a witness host).</div>
+{% endif %}
+
+{% if state.problems or state.notices %}
+<div class="card">
+  <h2>{{ 'Problems' if state.problems else 'Notices' }}</h2>
+  <ul>
+    {% for p in state.problems %}
+    <li><span class="badge {{ 'bad' if p.level == 'critical' else 'warn' }}">{{ p.level }}</span> {{ p.message }}</li>
+    {% endfor %}
+    {% for notice in state.notices %}
+    <li><span class="badge info">maintenance</span> {{ notice }}</li>
+    {% endfor %}
+  </ul>
+  {% if state.problems %}<p class="muted">The alert mail reports these too (Settings → Alerts &amp; export).</p>{% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Members</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Member</th><th>Database</th><th>Valkey</th><th>Mail</th><th>System</th><th>Version</th><th>Last action</th></tr></thead>
+    <tbody>
+    {% for m in state.members %}
+      <tr class="{{ 'muted' if not m.reporting }}">
+        <td>
+          <span class="mono">{{ m.name }}</span>{% if m.self %} <span class="badge info">this node</span>{% endif %}
+          <div class="muted mono small">{{ m.address }}</div>
+          {% if m.reporting %}<div class="muted small">reported {{ m.age|duration }} ago</div>
+          {% elif m.age is not none %}<span class="badge bad">not reporting for {{ m.age|duration }}</span>
+          {% else %}<span class="badge bad">never reported</span>{% endif %}
+          {% if m.vip %}<div><span class="badge good">floating address</span></div>{% endif %}
+        </td>
+        <td>
+          {% if m.galera %}
+          {% set synced = m.galera.status == 'Primary' and m.galera.state == 'Synced' %}
+          <span class="badge {{ 'good' if synced else 'bad' if m.galera.status != 'Primary' else 'warn' }}">{{ m.galera.state or 'unknown' }}</span>
+          <div class="muted small">{{ m.galera.status }} component of {{ m.galera.size }}</div>
+          {% else %}<span class="muted">–</span>{% endif %}
+        </td>
+        <td>
+          {% if m.valkey and m.valkey.role == 'master' %}<span class="badge good">master</span>
+          {% elif m.valkey and m.valkey.role == 'slave' %}
+          <span class="badge {{ 'good' if m.valkey.link == 'up' else 'bad' }}">replica{{ '' if m.valkey.link == 'up' else ', link down' }}</span>
+          {% if m.valkey.lag_bytes is defined and m.valkey.lag_bytes %}<div class="muted small">{{ m.valkey.lag_bytes|filesize }} behind</div>{% endif %}
+          {% elif m.valkey %}<span class="badge bad">no answer</span>
+          {% else %}<span class="muted">–</span>{% endif %}
+          {% if m.sentinel %}<div class="muted small">Sentinel: {{ 'majority' if m.sentinel.quorum else 'no majority' }}</div>{% endif %}
+          {% if m.promoting %}<div><span class="badge info">becoming master…</span></div>{% endif %}
+        </td>
+        <td>
+          {% if m.maintenance %}
+          <span class="badge {{ 'info' if m.maintenance_applied else 'warn' }}">{{ 'maintenance' if m.maintenance_applied else 'entering maintenance' }}</span>
+          {% elif m.maintenance_applied %}<span class="badge warn">leaving maintenance</span>
+          {% elif m.reporting %}<span class="badge good">accepting</span>{% endif %}
+          {% if m.queue %}
+          <div class="small">queue: {{ m.queue.counts.active }} active, {{ m.queue.counts.deferred }} deferred{% if m.queue.counts.hold %}, {{ m.queue.counts.hold }} held{% endif %}</div>
+          {% if m.queue.oldest_deferred %}<div class="muted small">oldest deferred {{ m.queue.oldest_deferred|duration }}</div>{% endif %}
+          {% endif %}
+          {% if m.scanned is not none %}<div class="muted small">{{ "{:,}".format(m.scanned) }} scanned since Rspamd started</div>{% endif %}
+          {% if m.services_down %}<div><span class="badge bad" title="{{ m.services_down|join(', ') }}">{{ m.services_down|length }} service(s) stopped</span></div>{% endif %}
+        </td>
+        <td class="small">
+          {% if m.load %}<div>load {{ m.load[0] }}{% if m.cpus %} ({{ m.cpus }} CPUs){% endif %}</div>{% endif %}
+          {% if m.memory_percent is not none %}<div>memory {{ m.memory_percent|round|int }}%</div>{% endif %}
+          {% for d in m.disk %}<div class="{{ 'bad' if d.used_percent >= 90 }}"><span class="mono">{{ d.path }}</span> {{ d.used_percent|round|int }}%</div>{% endfor %}
+          {% if m.uptime %}<div class="muted">up {{ m.uptime|duration }}</div>{% endif %}
+        </td>
+        <td class="mono small">{{ m.version or '–' }}{% if m.deployed_at %}<div class="muted">{{ m.deployed_at|datetime }}</div>{% endif %}</td>
+        <td class="small">{% if m.last_action %}<span class="{{ '' if m.last_action.ok else 'bad' }}" title="{{ m.last_action.at|datetime }}">{{ m.last_action.message }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    {% if state.witness %}
+      <tr>
+        <td><span class="mono">{{ state.witness.name }}</span> <span class="badge">witness</span>
+          <div class="muted mono small">{{ state.witness.address }}</div></td>
+        <td>{% if state.witness.arbitrator is none %}<span class="muted">–</span>
+          {% else %}<span class="badge {{ 'good' if state.witness.arbitrator else 'bad' }}">{{ 'arbitrator counted' if state.witness.arbitrator else 'arbitrator missing' }}</span>{% endif %}</td>
+        <td>{% if state.witness.sentinel is none %}<span class="muted">–</span>
+          {% else %}<span class="badge {{ 'good' if state.witness.sentinel else 'bad' }}">Sentinel {{ 'answers' if state.witness.sentinel else 'does not answer' }}</span>{% endif %}</td>
+        <td colspan="3" class="muted small">Votes only: receives no mail and holds no data.</td>
+        <td></td>
+      </tr>
+    {% endif %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">Each node reports every 10 seconds; a node that has not reported for a minute counts as
+    missing. The arbitrator is counted from the database cluster's size. Maintenance, the Valkey master, adding
+    and removing members: <a href="{{ url_for('cluster.manage') }}">Settings → Cluster</a>.</p>
+</div>
+{% endif %}

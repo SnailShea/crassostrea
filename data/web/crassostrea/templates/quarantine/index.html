@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, next_field, pager %}
+{% block title %}Quarantine{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Quarantine</h1>
+    <p>Rejected inbound mail for domains with quarantine enabled, and rejected outbound mail from relay networks. Messages expire automatically.</p>
+  </div>
+</div>
+
+{% if owner %}
+<div class="alert info">
+  Showing the quarantine of <strong class="mono">{{ owner }}</strong> (and its sub-addresses such as
+  <span class="mono">{{ owner.split('@')[0] }}+tag@{{ owner.split('@')[1] }}</span>).
+  {% if mailbox %}<a href="{{ url_for('mailboxes.edit', user_id=mailbox.id) }}">Mailbox user</a> ·{% endif %}
+  <a href="{{ url_with(user=None, page=None) }}">Show all recipients</a>
+</div>
+{% endif %}
+
+<div class="card">
+  <form method="get" class="filters">
+    {% if owner %}<input type="hidden" name="user" value="{{ owner }}">{% endif %}
+    <input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Subject, sender, recipient or queue ID">
+    <select name="domain" data-autosubmit aria-label="Domain">
+      <option value="">All domains</option>
+      {% for d in domains %}<option value="{{ d }}" {{ 'selected' if request.args.get('domain') == d }}>{{ d }}</option>{% endfor %}
+    </select>
+    <select name="direction" data-autosubmit aria-label="Direction">
+      <option value="">Inbound &amp; outbound</option>
+      {% for key, label in directions.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('direction') == key }}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="status" data-autosubmit aria-label="Status">
+      <option value="">Any status</option>
+      <option value="pending" {{ 'selected' if request.args.get('status') == 'pending' }}>Not released</option>
+      <option value="released" {{ 'selected' if request.args.get('status') == 'released' }}>Released</option>
+    </select>
+    <button type="submit" class="btn">Filter</button>
+  </form>
+
+  <div class="live" data-live data-live-refresh="30">
+{% include "quarantine/_live.html" %}
+  </div>
+</div>
+{% endblock %}

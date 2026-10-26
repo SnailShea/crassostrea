@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Settings</h1><p>How the gateway treats mail, and what it keeps.</p></div>
+</div>
+
+<nav class="section-nav" aria-label="Sections of this page">
+  <a href="#thresholds">Spam thresholds</a><a href="#limits">Messages</a><a href="#quarantine">Quarantine and digests</a>
+  <a href="#scanning">Scanning</a><a href="#administrators">Administrators</a><a href="#timezone">Time zone</a>
+</nav>
+
+<form method="post" action="{{ url_for('settings.save') }}" data-dirty-warn>
+  {{ form.csrf_token }}
+  <div class="grid-2">
+    <div class="card" id="thresholds">
+      <h2>Spam thresholds</h2>
+      <p class="muted">Rspamd score at which an action is taken. Domains can override these values
+        {%- if overrides %} ({{ overrides }} domain(s) currently do){% endif %}.</p>
+      <div class="form-row">
+        {{ field(form.greylist_score, step="0.1") }}
+        {{ field(form.add_header_score, step="0.1") }}
+        {{ field(form.reject_score, step="0.1") }}
+      </div>
+      <p class="muted">Greylist: temporarily defer unknown senders. Mark as spam: deliver with
+        <code>X-Spam-Flag: YES</code>. Reject: refuse the message (kept in the quarantine).</p>
+    </div>
+    <div class="card" id="limits">
+      <h2>Messages</h2>
+      <p class="muted">Limits apply to inbound and outbound mail. Every scanned message is kept in full in the
+        mail log, so administrators can open and re-queue it.</p>
+      {{ field(form.max_message_size_mb, help="Larger messages are refused by Postfix. At most 100 MiB.") }}
+      {{ field(form.max_attachment_size_mb, help="Messages with a larger attachment (decoded size) are rejected. 0: no limit.") }}
+      {{ field(form.maillog_retention_days, help="At most 31 days.") }}
+    </div>
+    <div class="card" id="quarantine">
+      <div class="card-head"><h2>Quarantine and digests</h2>
+        <button type="submit" form="send-digests" class="btn small"
+                title="Digests are sent every 15 minutes when due; this sends the due ones now">Send due digests</button></div>
+      {{ field(form.quarantine_retention_days) }}
+      {{ field(form.quarantine_max_size_mb, help="Larger rejected messages are not stored.") }}
+      {{ check(form.quarantine_outbound, help="Outbound quarantine is only visible to administrators.") }}
+      <p class="muted">Recipients with new quarantined mail get a digest with links to review and release it, no
+        account needed. Domains and mailbox users can override the interval.</p>
+      {{ field(form.digest_interval) }}
+      {{ field(form.digest_sender, placeholder=digest_sender,
+               help="Envelope and header sender of digests. Leave empty for " ~ digest_sender ~ ".") }}
+      {{ field(form.digest_token_days, help="Anyone with the link can manage that recipient's quarantine until it expires.") }}
+      <h3>Accounts for recipients</h3>
+      {{ check(form.mailbox_auto_create, help="A recipient of quarantined mail without a mailbox user gets one when the mailbox exists on the domain's destination server (the recipient list, verified recipients, or an SMTP check), and a mail with a link to set the password.") }}
+      {{ field(form.mailbox_invite_days, help="Also for the links administrators send from the mailbox users page.") }}
+    </div>
+    <div class="card" id="scanning">
+      <h2>Scanning</h2>
+      {{ check(form.virus_scanning, help="Off: messages are not checked by ClamAV (the attachment rules and hash lookups still apply). Rspamd follows within a minute.") }}
+      {% if not clamav_installed %}<div class="alert warning">ClamAV is not installed on this gateway (SKIP_CLAMD): mail is not scanned for viruses either way.</div>{% endif %}
+      {{ field(form.ptr_check, help="Most mail servers have a reverse DNS name; hosts without one are often infected machines. The relay networks and the addresses of the global allow list are exempt. Temporary DNS failures always defer.") }}
+    </div>
+    <div class="card" id="administrators">
+      <h2>Administrators</h2>
+      {{ check(form.require_admin_2fa, help="Administrators without it must set it up at their next page view. API keys are not affected.") }}
+      {{ field(form.audit_retention_days, help="Changes made in the web UI and through the API (Audit log).") }}
+      {{ field(form.admin_allowed_networks, rows=4, placeholder="192.0.2.0/24\n2001:db8::/48",
+               help="Networks or addresses, one per line. Empty: any. Your address is " ~ client_ip ~ ". Mailbox users and API keys are not affected; the command flask admin-networks --clear on the server undoes a lock-out.") }}
+    </div>
+    <div class="card" id="timezone">
+      <h2>Time zone</h2>
+      {{ field(form.timezone, help="The servers' time zone (every cluster node), and the one the web interface shows times in. The services restart once to use it.") }}
+      <p class="muted">The servers use <strong>{{ system_zone }}</strong>.
+        {% if zone_status and zone_status.state == 'failed' %}<span class="badge bad">The last change failed: {{ zone_status.message }}</span>{% endif %}</p>
+    </div>
+  </div>
+  <div class="save-bar">
+    <button type="submit" class="btn primary">Save settings</button>
+    <span class="unsaved">Unsaved changes</span>
+  </div>
+</form>
+<form method="post" action="{{ url_for('settings.send_digests') }}" id="send-digests">{{ csrf() }}</form>
+{% endblock %}

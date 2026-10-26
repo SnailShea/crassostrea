@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf %}
+{% block title %}Alerts & export{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Alerts &amp; export</h1>
+    <p>How the gateway reaches your monitoring: metrics for Prometheus, events for a SIEM and alert mail. The
+      checks and services themselves are on the <a href="{{ url_for('monitoring.index') }}">Monitoring</a> page.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card" id="metrics">
+    <h2>Prometheus</h2>
+    <p>Metrics at <span class="mono">https://{{ hostname }}/metrics</span> with a bearer token.</p>
+    {% if new_token %}
+    <div class="alert success">New token: <span class="mono">{{ new_token }}</span></div>
+    {% endif %}
+    <pre class="log">scrape_configs:
+  - job_name: mail-gateway
+    scheme: https
+    authorization:
+      credentials: {{ new_token or 'sfm_…' }}
+    static_configs:
+      - targets: ['{{ hostname }}']</pre>
+    <div class="actions">
+      <form method="post" action="{{ url_for('monitoring.create_token') }}" class="inline"
+            {% if has_token %}data-confirm="Create a new token? The current one stops working."{% endif %}>
+        {{ csrf() }}<button type="submit" class="btn primary">{{ 'New token' if has_token else 'Create a token' }}</button>
+      </form>
+      {% if has_token %}
+      <form method="post" action="{{ url_for('monitoring.revoke_token') }}" class="inline"
+            data-confirm="Revoke the token? Prometheus can no longer read the metrics.">
+        {{ csrf() }}<button type="submit" class="btn danger">Revoke</button>
+      </form>
+      {% endif %}
+    </div>
+    <p class="muted">Among them sf_up, sf_service_active, sf_queue_messages, sf_queue_deferred_oldest_seconds,
+      sf_messages_1h and sf_messages_24h by outcome, sf_certificate_expiry_seconds,
+      sf_backup_last_timestamp_seconds and sf_directory_sync_ok. Rspamd's own metrics are at
+      <span class="mono">/rspamd/metrics</span> where the Rspamd UI is reachable.</p>
+  </div>
+
+  <form method="post" action="{{ url_for('monitoring.save_siem') }}" class="card" id="siem">
+    {{ siem_form.csrf_token }}
+    <h2>SIEM</h2>
+    <div class="form-row">
+      {{ field(siem_form.siem_host, placeholder="siem.example.com", help="Empty: no events are sent.") }}
+      {{ field(siem_form.siem_port) }}
+    </div>
+    <div class="form-row">
+      {{ field(siem_form.siem_protocol) }}
+      {{ field(siem_form.siem_format) }}
+    </div>
+    {{ check(siem_form.siem_verify_tls) }}
+    {{ check(siem_form.siem_mail_log) }}
+    {{ check(siem_form.siem_audit) }}
+    <p class="muted">One event per line. While the SIEM cannot be reached, up to 100,000 events wait in Valkey
+      {% if queued is not none %}(now {{ queued }}){% endif %}; mail is never held up.</p>
+    <div class="actions">
+      <button type="submit" class="btn primary">Save</button>
+      <button type="submit" class="btn" formaction="{{ url_for('monitoring.test_siem') }}">Send a test event</button>
+    </div>
+  </form>
+</div>
+
+<form method="post" action="{{ url_for('monitoring.save_alerts') }}" class="card" id="alerts">
+  {{ alert_form.csrf_token }}
+  <h2>Alert mail</h2>
+  {{ field(alert_form.alert_recipients, rows=2, placeholder="ops@example.com",
+           help="One per line. Mailed when a check of the Monitoring page starts failing, once a day while it fails and when it is solved; checked every 5 minutes. Empty: no alerts.") }}
+  <div class="form-row">
+    {{ field(alert_form.alert_deferred_count) }}
+    {{ field(alert_form.alert_deferred_hours) }}
+    {{ field(alert_form.alert_cert_days) }}
+    {{ field(alert_form.alert_backup_hours) }}
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn primary">Save</button>
+    <button type="submit" class="btn" formaction="{{ url_for('monitoring.test_alerts') }}">Send a test alert</button>
+  </div>
+</form>
+{% endblock %}

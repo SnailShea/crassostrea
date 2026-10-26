@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Audit log</h1>
+    <p>Changes made in the web UI, through the API and with management commands, and every login. Passwords, keys,
+      codes and tokens are not recorded.</p>
+  </div>
+</div>
+<div class="card">
+  <form method="get" class="filters">
+    <input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Action, target, message, field or IP">
+    <select name="actor" data-autosubmit aria-label="Who">
+      <option value="">Everyone</option>
+      {% for a in actors %}<option value="{{ a }}" {{ 'selected' if request.args.get('actor') == a }}>{{ a }}</option>{% endfor %}
+    </select>
+    <select name="outcome" data-autosubmit aria-label="Outcome">
+      <option value="">Any outcome</option>
+      <option value="ok" {{ 'selected' if request.args.get('outcome') == 'ok' }}>Succeeded</option>
+      <option value="failed" {{ 'selected' if request.args.get('outcome') == 'failed' }}>Failed</option>
+    </select>
+    <button type="submit" class="btn">Filter</button>
+  </form>
+  <div class="live" data-live data-live-refresh="30">
+{% include "_audit_live.html" %}
+  </div>
+</div>
+{% endblock %}

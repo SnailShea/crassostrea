@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}Attachments{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Attachments</h1>
+    <p>File types that are never accepted, whatever their spam score.</p>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('attachments.save') }}" class="card">
+  {{ form.csrf_token }}
+  {{ field(form.attachment_blocked_extensions, rows=4, class="mono",
+           help="Separated by spaces or lines, without dots. The last extension counts, so invoice.pdf.exe is an exe; trailing dots and spaces are ignored as Windows ignores them. Empty: no extension is blocked.") }}
+  {{ check(form.attachment_scan_archives, help="The names of the files in an archive are checked too, one level deep.") }}
+  {{ check(form.attachment_block_encrypted, help="The antivirus cannot look into them; often used to slip malware past it. Also rejects archives with encrypted file names.") }}
+  {{ check(form.attachment_outbound) }}
+  {{ field(form.attachment_exempt_senders, rows=3, class="mono", placeholder="vendor.example\nit@partner.example",
+           help="Envelope sender addresses or domains, one per line, e.g. a software vendor.") }}
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+
+<div class="card">
+  <h2>What happens</h2>
+  <p>A message with such an attachment is rejected while the sending server is still connected, so the sender
+    learns that it did not arrive. Inbound mail of a domain with a quarantine is kept there and an administrator
+    can release it. The rejection is in the mail log with the symbol <span class="mono">ATTACHMENT_BLOCKED</span>
+    and the file name.</p>
+  <p class="muted">Independently, Rspamd adds to the spam score of risky types it knows (executables, scripts,
+    disk images), and the antivirus and the Office macro check look into the files.</p>
+  <p class="muted">Default list: <span class="mono">{{ defaults|join(' ') }}</span></p>
+</div>
+
+<form method="post" action="{{ url_for('attachments.save_hashes') }}" class="card" id="hashes">
+  {{ hash_form.csrf_token }}
+  <h2>Hash lookups</h2>
+  <p class="muted">The hash of every attachment is looked up in databases of known malware, and a hit adds its
+    score (at the reject threshold the message is rejected and quarantined). Only the hash leaves the gateway,
+    never the file. A file nobody has reported yet passes, so this adds to ClamAV rather than replacing it.
+    Results are cached for a day. Sandboxes that open unknown files need a commercial service or appliance and
+    are not included.</p>
+  <div class="grid-2">
+    <fieldset>
+      <legend>Team Cymru Malware Hash Registry</legend>
+      {{ check(hash_form.hashcheck_mhr, help="Free, over DNS, no account. Lists files detected by the antivirus engines Team Cymru runs.") }}
+      <div class="form-row">
+        {{ field(hash_form.hashcheck_mhr_percent) }}
+        {{ field(hash_form.hashcheck_mhr_score, step="0.1") }}
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>MalwareBazaar (abuse.ch)</legend>
+      {{ field(hash_form.hashcheck_mb_key, autocomplete="new-password",
+               placeholder="stored" if settings.hashcheck_mb_key_set else "",
+               help="Free key from auth.abuse.ch. With a key the lookup is on. Leave empty to keep the stored key.") }}
+      {% if settings.hashcheck_mb_key_set %}{{ check(hash_form.hashcheck_mb_remove) }}{% endif %}
+      {{ field(hash_form.hashcheck_mb_score, step="0.1") }}
+    </fieldset>
+    <fieldset>
+      <legend>VirusTotal</legend>
+      {{ field(hash_form.hashcheck_vt_key, autocomplete="new-password",
+               placeholder="stored" if settings.hashcheck_vt_key_set else "",
+               help="With a key the lookup is on. The free key allows 4 requests a minute and 500 a day; attachments beyond that pass unchecked. Leave empty to keep the stored key.") }}
+      {% if settings.hashcheck_vt_key_set %}{{ check(hash_form.hashcheck_vt_remove) }}{% endif %}
+      <div class="form-row">
+        {{ field(hash_form.hashcheck_vt_engines) }}
+        {{ field(hash_form.hashcheck_vt_score, step="0.1") }}
+        {{ field(hash_form.hashcheck_vt_per_minute) }}
+      </div>
+    </fieldset>
+  </div>
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+
+<div class="grid-2">
+  <form method="post" action="{{ url_for('attachments.check_hash') }}#check" class="card" id="check">
+    {{ check_form.csrf_token }}
+    <h2>Look up a hash</h2>
+    <div class="inline-form">
+      {{ field(check_form.hash, class="mono", placeholder="SHA-256, SHA-1 or MD5") }}
+      <div class="field"><button type="submit" class="btn">Look up</button></div>
+    </div>
+    {% if result is not none %}
+    <dl class="props">
+      {% for source, r in result.items() %}
+      <dt>{{ sources[source] }}</dt>
+      <dd>{% if r.malicious %}<span class="badge bad">malware</span>{% elif r.malicious is none %}<span class="badge warn">no answer</span>{% else %}<span class="badge good">not known</span>{% endif %}
+        <span class="muted">{{ r.detail }}</span></dd>
+      {% else %}
+      <dt>–</dt><dd>No lookup is enabled.</dd>
+      {% endfor %}
+    </dl>
+    {% endif %}
+  </form>
+  <div class="card">
+    <h2>Recent detections</h2>
+    {% if hits_error %}<div class="alert danger">{{ hits_error }}</div>{% endif %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>File</th><th>Found by</th><th>From → to</th></tr></thead>
+      <tbody>
+      {% for h in hits %}
+        <tr>
+          <td class="nowrap">{{ h.at|datetime }}</td>
+          <td>{{ h.file }}<div class="mono small muted">{{ h.sha256[:16] }}…</div></td>
+          <td>{{ sources.get(h.source, h.source) }}<div class="muted small">{{ h.detail }}</div></td>
+          <td class="mono small">{{ h.from }} → {{ h.rcpt }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty">None.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

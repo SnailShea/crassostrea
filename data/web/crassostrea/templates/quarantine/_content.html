@@ -1,0 +1,50 @@
+{# Message preview shared by the admin area and the mailbox user portal.
+   With ``html_url`` (the admin views, for messages with an HTML body) the
+   message card switches between plain text and the sanitized HTML. #}
+{% set html_view = html_url is defined and html_url and request.args.get('view') == 'html' %}
+{% if attachments %}
+<div class="card">
+  <h2>Attachments</h2>
+  <table>
+    <thead><tr><th>Name</th><th>Type</th><th class="num">Size</th></tr></thead>
+    <tbody>
+    {% for a in attachments %}
+      <tr><td class="mono">{{ a.name }}</td><td>{{ a.type }}</td><td class="num">{{ a.size|filesize }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="card" id="message">
+  <div class="card-head">
+    <h2>Message</h2>
+    {% if html_url is defined and html_url %}
+    <nav class="view-toggle" aria-label="Message view">
+      <a href="{{ url_with(view=None) }}#message" {% if not html_view %}class="active" aria-current="page"{% endif %}>Plain text</a>
+      <a href="{{ url_with(view='html') }}#message" {% if html_view %}class="active" aria-current="page"{% endif %}>HTML</a>
+    </nav>
+    {% endif %}
+  </div>
+  {% if html_view %}
+  <p class="muted">Shown without scripts, links, forms or remote images.</p>
+  <iframe class="message-html" src="{{ html_url }}" sandbox referrerpolicy="no-referrer" title="HTML view of the message"></iframe>
+  {% else %}
+  <p class="muted">Shown as plain text, links and images are not loaded.</p>
+  <pre class="message">{{ body or "(no text part)" }}</pre>
+  {% if truncated %}<p class="muted">The text was truncated. Download the message to see all of it.</p>{% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Headers</h2>
+  <div class="table-wrap">
+  <table>
+    <tbody>
+    {% for name, value in headers %}
+      <tr><td class="nowrap mono">{{ name }}</td><td class="mono">{{ value }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>

@@ -1,0 +1,45 @@
+{% from "_macros.html" import csrf, next_field, pager %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+  <form method="post" action="{{ url_for('quarantine.bulk') }}" data-async>
+    {{ csrf() }}{{ next_field() }}
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="check"><input type="checkbox" data-select-all="ids" aria-label="Select all"></th>
+          <th>Received</th><th>From</th><th>To</th><th>Subject</th><th class="num">Score</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in pagination.items %}
+        <tr>
+          <td class="check"><input type="checkbox" name="ids" value="{{ item.id }}" aria-label="Select message {{ item.id }}"></td>
+          <td class="nowrap">{{ item.created_at|datetime }}</td>
+          <td class="truncate">{{ item.sender or '<>' }}</td>
+          <td class="truncate">{{ item.rcpt }}</td>
+          <td class="truncate"><a href="{{ url_for('quarantine.show', item_id=item.id) }}">{{ item.subject or '(no subject)' }}</a></td>
+          <td class="num">{{ '%.1f'|format(item.score) }}</td>
+          <td class="nowrap">
+            {% if item.direction == 'outbound' %}<span class="badge warn">outbound</span>{% endif %}
+            {% if item.is_virus %}<span class="badge bad">virus</span>{% endif %}
+            {% if item.released_at %}<span class="badge good">released</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="empty">The quarantine is empty.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if pagination.items %}
+    <div class="actions">
+      <span class="muted">Selected:</span>
+      <button type="submit" name="action" value="release" class="btn small"
+              data-confirm="Release the selected messages to their recipients?">Release</button>
+      <button type="submit" name="action" value="learn_spam" class="btn small">Learn as spam &amp; delete</button>
+      <button type="submit" name="action" value="delete" class="btn small danger"
+              data-confirm="Delete the selected messages?">Delete</button>
+    </div>
+    {% endif %}
+  </form>
+  {{ pager(pagination) }}

@@ -1,0 +1,22 @@
+{{ brand.name }} – {% if invited %}your spam filter account{% else %}set a new password{% endif %}
+
+{% if invited -%}
+The spam filter held back mail addressed to {{ address }}. An account was
+created for you, so you can review that mail, release what you want and set
+how strict the filter is for you.
+{%- elif requested -%}
+Someone (hopefully you) asked for a new password for your spam filter account
+{{ address }}. Your current password stays valid until you set a new one.
+{%- else -%}
+An administrator sent you a link to set a new password for your spam filter
+account {{ address }}.
+{%- endif %}
+
+Set your password: {{ link }}
+
+The link works once and is valid for {{ valid_days }} day(s). Afterwards log in
+at {{ portal_url }} with your address and the new password.
+If you did not expect this mail, you can ignore it.
+--
+{% if brand.footer %}{{ brand.footer }}
+{% endif %}{{ hostname }}

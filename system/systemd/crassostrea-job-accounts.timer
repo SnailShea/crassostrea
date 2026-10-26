@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: create accounts for recipients of quarantined mail every 5 minutes (when enabled)
+
+[Timer]
+Unit=crassostrea-job@provision-accounts.service
+OnBootSec=6min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

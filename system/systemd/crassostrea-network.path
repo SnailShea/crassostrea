@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: apply an IP addressing change requested in the web UI
+
+[Path]
+# Written by the web UI (atomic rename), removed by network-apply
+PathExists=/var/lib/crassostrea/web/ip-request.json
+Unit=crassostrea-network.service
+
+[Install]
+WantedBy=multi-user.target

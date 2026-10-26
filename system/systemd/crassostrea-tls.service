@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: certificate or TLS change (requested in the web UI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/tls-apply
+# Let's Encrypt validations take a while
+TimeoutStartSec=15min

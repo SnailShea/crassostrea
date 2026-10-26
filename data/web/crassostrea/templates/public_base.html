@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en"{% if theme %} data-theme="{{ theme }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="{{ url_for('branding.favicon', v=brand.version) }}">
+  <meta name="referrer" content="no-referrer">
+  <title>{% block title %}{% endblock %} · {{ brand.name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  {% if brand.accent %}<link rel="stylesheet" href="{{ url_for('branding.stylesheet', v=brand.version) }}">{% endif %}
+</head>
+<body>
+{% from "_macros.html" import theme_toggle with context %}
+{{ theme_toggle("corner-toggle") }}
+<main class="main public">
+  <div class="public-head">
+    {% if brand.has_logo %}<img src="{{ url_for('branding.logo', v=brand.version) }}" alt="">{% endif %}
+    <strong>{{ brand.name }}</strong> <span class="muted">{{ hostname }}</span>
+  </div>
+  {% include "_flashes.html" %}
+  {% block content %}{% endblock %}
+  {% if brand.footer %}<p class="brand-footer">{{ brand.footer }}</p>{% endif %}
+</main>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

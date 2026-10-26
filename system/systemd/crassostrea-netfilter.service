@@ -1,0 +1,26 @@
+[Unit]
+Description=Crassostrea: ban hosts after repeated SMTP protocol errors and failed logins (nftables)
+After=network.target firewalld.service valkey.service
+Wants=valkey.service
+
+[Service]
+EnvironmentFile=/etc/crassostrea/crassostrea.conf
+Environment=PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WorkingDirectory=/usr/local/lib/crassostrea/netfilter
+ExecStart=/usr/local/lib/crassostrea/venv/bin/python /usr/local/lib/crassostrea/netfilter/main.py
+Restart=always
+RestartSec=5
+# Only nftables: own table inet crassostrea
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

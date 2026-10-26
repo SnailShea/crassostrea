@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Rate limits{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Rate limits</h1>
+    <p>How much inbound mail a sending server may deliver, and a recipient may receive, so a flood or a
+      misbehaving server cannot swamp the gateway or a mailbox. Senders over a limit are asked to retry later
+      (a temporary error); nothing is lost.</p>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('ratelimits.save') }}">
+  {{ form.csrf_token }}
+  <div class="grid-2">
+    <div class="card">
+      <h2>SMTP connections</h2>
+      <p class="muted">Per sending host, counted by Postfix{{ ' on each node' if config.CLUSTER_NODES }}, during the
+        SMTP dialogue. 0: no limit.</p>
+      <div class="form-row">
+        {{ field(form.smtp_connection_count_limit, help="At the same time. Postfix's default is 50.") }}
+        {{ field(form.smtp_connection_rate_limit) }}
+      </div>
+      <div class="form-row">
+        {{ field(form.smtp_message_rate_limit) }}
+        {{ field(form.smtp_recipient_rate_limit) }}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Messages</h2>
+      <p class="muted">Counted by Rspamd{{ ' for all nodes together' if config.CLUSTER_NODES }} as messages are
+        scanned. 0: no limit.</p>
+      <div class="form-row">{{ field(form.inbound_ip_limit) }}{{ field(form.inbound_ip_period) }}</div>
+      <div class="form-row">{{ field(form.inbound_rcpt_limit) }}{{ field(form.inbound_rcpt_period) }}</div>
+      <div class="form-row">{{ field(form.inbound_bounce_limit,
+          help="Bounces have an empty sender: a flood of them is usually backscatter of forged mail.") }}{{ field(form.inbound_bounce_period) }}</div>
+    </div>
+    <div class="card">
+      <h2>Exempt networks</h2>
+      {{ field(form.rate_limit_exempt, rows=4, class="mono", placeholder="192.0.2.0/24\n2001:db8::/48",
+               help="Networks or addresses, one per line, e.g. partner servers that send a lot. The relay networks never have rate limits: their senders have outbound limits.") }}
+    </div>
+    <div class="card">
+      <h2>Outbound</h2>
+      <p>Mail from the relay networks has limits per sender instead:
+        <a href="{{ url_for('outbound.index') }}">Outbound limits</a>.</p>
+    </div>
+  </div>
+  <p><button type="submit" class="btn primary">Save rate limits</button></p>
+</form>
+
+<div class="live" data-live data-live-refresh="30">
+{% include "_ratelimits_live.html" %}
+</div>
+{% endblock %}

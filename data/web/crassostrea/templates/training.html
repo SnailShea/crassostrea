@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}Training{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Training</h1>
+    <p>Teach the Bayes classifier with messages that were misclassified.</p>
+  </div>
+</div>
+<div class="card">
+  <form method="post" action="{{ url_for('training.index') }}" enctype="multipart/form-data">
+    {{ form.csrf_token }}
+    {{ field(form.kind) }}
+    {{ field(form.message_file, accept=".eml,message/rfc822") }}
+    {{ field(form.message_text, rows=12) }}
+    <button type="submit" class="btn primary">Learn</button>
+  </form>
+  <p class="muted">Messages learned as spam are also added to the local fuzzy storage, so near-identical
+    copies are recognised immediately. Bayes needs at least 200 spam and 200 ham messages before it
+    contributes to the score.</p>
+</div>
+
+<div class="grid-2" id="reports">
+  <form method="post" action="{{ url_for('training.save_reports') }}" class="card">
+    {{ reports_form.csrf_token }}
+    <h2>Reports from users</h2>
+    <p>Users forward a message <strong>as an attachment</strong> to
+      <span class="mono">{{ addresses.spam }}</span> (spam) or <span class="mono">{{ addresses.ham }}</span>
+      (not spam), and every attached message is learned. In Microsoft 365, set these addresses as the
+      reporting mailbox of the Report button (Defender: User reported settings).</p>
+    {{ check(reports_form.user_reports_enabled, help="Only users of your domains can report: from a relay network, or passing SPF or with a DKIM signature of their domain.") }}
+    {{ check(reports_form.user_reports_confirm, help="A short reply that the messages were learned, or why not.") }}
+    {{ field(reports_form.user_reports_per_hour) }}
+    <p><button type="submit" class="btn primary">Save</button></p>
+  </form>
+  <div class="card">
+    <h2>Recent reports</h2>
+    {% if not enabled %}<p class="muted">Reporting is off.</p>{% endif %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Time</th><th>Reporter</th><th>As</th><th>Result</th></tr></thead>
+      <tbody>
+      {% for r in recent %}
+        <tr>
+          <td class="nowrap">{{ r.at|datetime }}</td>
+          <td class="mono small">{{ r.reporter }}</td>
+          <td>{{ kinds[r.kind] }}</td>
+          <td>{% if r.status == 'learned' %}<span class="badge good">{{ r.learned }} learned</span>{% else %}<span class="badge {{ 'warn' if r.status == 'empty' else 'bad' }}">{{ r.status }}</span>{% endif %}
+            <div class="muted small">{{ r.subjects|truncate(80) }}{% if r.subjects %} · {% endif %}{{ r.detail }}</div></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty">None yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: create or delete a backup as requested in the web UI
+
+[Path]
+# Written by the web UI (atomic rename), removed by backup request
+PathExists=/var/lib/crassostrea/web/backup-request.json
+Unit=crassostrea-backup-request.service
+
+[Install]
+WantedBy=multi-user.target

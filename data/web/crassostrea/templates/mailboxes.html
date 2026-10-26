@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf %}
+{% block title %}Mailbox users{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Mailbox users</h1>
+    <p>Users log in with their e-mail address and manage the inbound quarantine of that address.
+      They cannot see outbound quarantine, other addresses or any settings.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Accounts</h2>
+    <form method="get" class="filters">
+      <input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Search address">
+      <select name="domain" data-autosubmit aria-label="Domain">
+        <option value="">All domains</option>
+        {% for d in domains %}<option value="{{ d }}" {{ 'selected' if request.args.get('domain') == d }}>{{ d }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="btn">Filter</button>
+    </form>
+    <div class="live" data-live>
+{% include "_mailboxes_live.html" %}
+    </div>
+  </div>
+  <div class="card">
+    <h2>Add mailbox user</h2>
+    <form method="post">
+      {{ form.csrf_token }}
+      {{ field(form.email, placeholder="alice@example.com", autocomplete="off",
+               help="The domain must be configured under Domains.") }}
+      {{ field(form.password, autocomplete="new-password", help="At least 10 characters.") }}
+      {{ field(form.confirm, autocomplete="new-password") }}
+      <button type="submit" class="btn primary">Create</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

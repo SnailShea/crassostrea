@@ -1,0 +1,17 @@
+{% extends "public_base.html" %}
+{% block title %}Dangerous link{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>This link was blocked</h1>
+  <div class="alert danger">{{ verdict.reason }}</div>
+  <p>The link in your e-mail leads to <span class="mono">{{ verdict.host }}</span>. Sites like this one steal
+    passwords or install malware. If you were not expecting this e-mail, delete it.</p>
+  <details><summary>Full address</summary><p class="mono small">{{ url }}</p></details>
+  {% if allow_continue %}
+  <p class="muted">If you are sure the site is safe:
+    <a href="{{ url }}" rel="noopener noreferrer nofollow">open it anyway</a>.</p>
+  {% else %}
+  <p class="muted">If you need this site, ask your administrators.</p>
+  {% endif %}
+</div>
+{% endblock %}

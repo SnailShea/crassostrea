@@ -1,0 +1,62 @@
+{# Personal filter settings. Expects: settings_form, entry_form, defaults, score_range,
+   mailbox, allow_entries, block_entries, settings_url, entry_url, entry_delete_endpoint, entry_delete_args #}
+{% from "_macros.html" import field, csrf %}
+<div class="grid-2">
+  <div class="card">
+    <h2>Spam thresholds</h2>
+    <p class="muted">Leave empty to use the defaults of {{ mailbox.domain.name }}
+      (greylist {{ defaults.greylist_score }}, mark as spam {{ defaults.add_header_score }},
+      reject {{ defaults.reject_score }}).
+      {% if score_range %}Values between {{ score_range[0]|int }} and {{ score_range[1]|int }} are allowed.{% endif %}</p>
+    <form method="post" action="{{ settings_url }}">
+      {{ settings_form.csrf_token }}
+      <div class="form-row">
+        {{ field(settings_form.greylist_score, step="0.5", placeholder=defaults.greylist_score) }}
+        {{ field(settings_form.add_header_score, step="0.5", placeholder=defaults.add_header_score) }}
+        {{ field(settings_form.reject_score, step="0.5", placeholder=defaults.reject_score) }}
+      </div>
+      {{ field(settings_form.digest_interval,
+               help="How often a summary of newly quarantined mail is sent to " ~ mailbox.email ~ ".") }}
+      <button type="submit" class="btn primary">Save</button>
+    </form>
+    <p class="muted">These thresholds and the lists below apply to messages addressed only to
+      {{ mailbox.email }} (including +tag addresses). A message that also goes to other people is filtered
+      with the settings of {{ mailbox.domain.name }}, or with the global settings if it also goes to other
+      domains.</p>
+  </div>
+
+  <div class="card" id="lists">
+    <h2>Allow &amp; block list</h2>
+    <p class="muted">Allowed senders skip spam scoring (viruses are still blocked, and entries are ignored
+      when the sender fails its own DMARC/SPF check). Blocked senders are always rejected. Block lists set by
+      an administrator for the whole domain take precedence.</p>
+    <form method="post" action="{{ entry_url }}" class="inline-form">
+      {{ entry_form.csrf_token }}
+      {{ field(entry_form.list_type) }}
+      {{ field(entry_form.value, placeholder="user@example.org or *@example.org") }}
+      {{ field(entry_form.comment) }}
+      <div class="field"><button type="submit" class="btn">Add</button></div>
+    </form>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>List</th><th>Sender</th><th>Comment</th><th></th></tr></thead>
+      <tbody>
+      {% for e in block_entries + allow_entries %}
+        <tr>
+          <td><span class="badge {{ 'good' if e.list_type == 'allow' else 'bad' }}">{{ e.list_type }}</span></td>
+          <td class="mono">{{ e.value }}</td>
+          <td class="muted">{{ e.comment }}</td>
+          <td class="right">
+            <form method="post" action="{{ url_for(entry_delete_endpoint, entry_id=e.id, **entry_delete_args) }}" class="inline">
+              {{ csrf() }}<button type="submit" class="link-button danger">Remove</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty">No entries.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>

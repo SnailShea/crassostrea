@@ -1,0 +1,8 @@
+[Unit]
+Description=Crassostrea: apply the web UI's Postfix settings and reload Postfix
+
+[Service]
+Type=oneshot
+# let the writer finish when several files are replaced at once
+ExecStartPre=/usr/bin/sleep 1
+ExecStart=/usr/local/libexec/crassostrea/postfix-apply

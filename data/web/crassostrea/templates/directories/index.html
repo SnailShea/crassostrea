@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Directories{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Directories</h1>
+    <p>Where the valid recipients of domains come from: an LDAP server (Active Directory, OpenLDAP) or Microsoft
+      365. Mail to other addresses of those domains is rejected.</p>
+  </div>
+  <a href="{{ url_for('directories.create') }}" class="btn primary">Add directory</a>
+</div>
+
+<div class="card">
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>Kind</th><th>Domains</th><th>Last synchronisation</th><th>Recipients</th></tr></thead>
+    <tbody>
+    {% for d in directories %}
+      <tr>
+        <td><a href="{{ url_for('directories.edit', directory_id=d.id) }}">{{ d.name }}</a></td>
+        <td>{{ kinds[d.kind] }}</td>
+        <td>{% for domain in d.domains %}<a href="{{ url_for('domains.edit', domain_id=domain.id, _anchor='recipients') }}">{{ domain.name }}</a>{% if domain.recipient_check != 'directory' %} <span class="muted">(not in use)</span>{% endif %}{{ ', ' if not loop.last }}{% else %}<span class="muted">none</span>{% endfor %}</td>
+        <td class="nowrap">{{ d.synced_at|datetime }}
+          {% if d.sync_error %}<span class="badge bad" title="{{ d.sync_error }}">failed</span>{% elif d.synced_at %}<span class="badge good">ok</span>{% endif %}</td>
+        <td>{{ d.sync_count if d.sync_count is not none else '–' }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No directories.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">Every 15 minutes the addresses of each directory are copied to the recipient lists of the
+    domains that use it (Domains → recipient validation "Only recipients from a directory"). Postfix only reads
+    those lists, so mail keeps flowing while a directory is down. A synchronisation that finds nothing, or would
+    remove more than half of a domain's recipients, is refused and shown here.</p>
+</div>
+{% endblock %}

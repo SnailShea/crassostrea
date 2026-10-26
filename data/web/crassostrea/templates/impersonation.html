@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf %}
+{% block title %}Impersonation{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Impersonation</h1>
+    <p>Inbound mail pretending to come from your organisation: a manager's name on an outside address, a domain
+      that looks like yours, or your own domain without proof that it is genuine.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <form method="post" action="{{ url_for('impersonation.save_settings') }}" class="card">
+    {{ settings_form.csrf_token }}
+    <h2>Checks</h2>
+    <p class="muted">Each adds its score to the spam score; 0 turns it off. At {{ reject_score }} or more (the
+      reject threshold) such mail is rejected and quarantined.</p>
+    {{ field(settings_form.impersonation_name_score, step="0.1",
+             help="The From name is a protected person (below), the address is outside your domains and none of theirs.") }}
+    {{ field(settings_form.impersonation_lookalike_score, step="0.1",
+             help="E.g. examp1e.com, exarnple.com, example.net, example-secure.com or example.com.evil.net for example.com.") }}
+    {{ field(settings_form.impersonation_spoof_score, step="0.1",
+             help="Your domain in From, but neither DMARC, DKIM nor SPF pass for it (not for mail from the relay networks). Domains publishing DMARC p=reject are already rejected by the DMARC check.") }}
+    {{ field(settings_form.impersonation_extra_domains, rows=2, class="mono", placeholder="brand.example",
+             help="Besides the domains of this gateway (" ~ (domains|join(', ') or 'none yet') ~ "), e.g. a parent company or brand. One per line.") }}
+    {{ field(settings_form.impersonation_exempt_domains, rows=2, class="mono", placeholder="example.net",
+             help="Domains that look like yours but are legitimate, e.g. your own other domains. One per line.") }}
+    <p><button type="submit" class="btn primary">Save</button></p>
+  </form>
+
+  <form method="post" action="{{ url_for('impersonation.test') }}#test" class="card" id="test">
+    {{ test_form.csrf_token }}
+    <h2>Test a sender</h2>
+    {{ field(test_form.display_name, placeholder="Jane Doe") }}
+    {{ field(test_form.address, placeholder="jane.doe@examp1e.com") }}
+    <p><button type="submit" class="btn">Test</button></p>
+    {% if result %}
+    <dl class="props">
+      <dt>Name</dt><dd>{% if result.name %}<span class="badge bad">{{ result.name.name }}</span>{% else %}no protected person{% endif %}</dd>
+      <dt>Domain</dt><dd>{% if result.own_domain %}<span class="badge info">your domain</span> the authentication check decides
+        {% elif result.lookalike %}<span class="badge bad">imitates {{ result.lookalike }}</span>{% else %}no look-alike{% endif %}</dd>
+    </dl>
+    {% endif %}
+  </form>
+</div>
+
+<div class="card" id="people">
+  <h2>Protected people</h2>
+  <form method="post" action="{{ url_for('impersonation.add_person') }}" class="inline-form">
+    {{ person_form.csrf_token }}
+    {{ field(person_form.name, placeholder="Jane Doe") }}
+    {{ field(person_form.addresses, rows=1, placeholder="jane.doe@gmail.com", class="mono") }}
+    <div class="field"><button type="submit" class="btn primary">Add</button></div>
+  </form>
+  <p class="muted">Managers, finance and HR staff whose names fraudsters use. Their addresses: private ones they
+    really write from (their addresses in your domains never count). Names match as whole words, ignoring case and
+    punctuation, also written "Doe, Jane".</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>Their addresses</th><th></th></tr></thead>
+    <tbody>
+    {% for p in people %}
+      <tr>
+        <td>{{ p.name }}</td>
+        <td class="mono">{{ p.addresses.split()|join(', ') or '–' }}</td>
+        <td class="right">
+          <form method="post" action="{{ url_for('impersonation.delete_person', person_id=p.id) }}" class="inline"
+                data-confirm="Stop protecting {{ p.name }}?">
+            {{ csrf() }}<button type="submit" class="link-button danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">Nobody yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

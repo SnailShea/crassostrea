@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}Journaling{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Journaling</h1>
+    <p>A copy of every message for your archive (MailStore, an Exchange or Microsoft 365 journal mailbox, or
+      any archive that accepts mail).</p>
+  </div>
+</div>
+
+<div class="live" data-live data-live-refresh="15">
+{% include "_journal_live.html" %}
+</div>
+
+<form method="post" action="{{ url_for('journal.save') }}" class="card">
+  {{ form.csrf_token }}
+  <h2>Settings</h2>
+  {{ field(form.journal_address, placeholder="journal@archive.example.com", help="Empty: journaling is off.") }}
+  {{ check(form.journal_inbound) }}
+  {{ check(form.journal_outbound, help="Mail from the relay networks.") }}
+  {{ check(form.journal_rejected, help="Normally only mail that was delivered (or marked as spam) is journaled.") }}
+  {{ field(form.journal_format, help="The journal report shows the envelope sender and every recipient, Bcc ones too, which the message itself does not; the original is attached unchanged. Archives that read Exchange journal reports may need the plain copy.") }}
+  <div class="actions">
+    <button type="submit" class="btn primary">Save</button>
+    <button type="submit" class="btn" formaction="{{ url_for('journal.test') }}">Send a test</button>
+  </div>
+  <p class="muted">Copies come from {{ sender }} and go out through Postfix without the spam filter, so they
+    are neither scanned nor logged again; your archive should accept that sender from this gateway. If the
+    archive cannot be reached, copies wait in Valkey and are sent later. The mail log keeps messages at most
+    31 days and is no archive.</p>
+</form>
+{% endblock %}

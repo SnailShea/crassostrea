@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% block title %}Two-factor login{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Set up two-factor login</h1>
+  <p>After your password, the login asks for a code from an authenticator app on your phone.</p></div></div>
+{% if required %}<div class="alert info">Two-factor login is required for administrators.</div>{% endif %}
+<div class="card">
+  <h2>1. Add this account to your app</h2>
+  <p class="muted">Scan the code with an authenticator app (e.g. Microsoft Authenticator, Google Authenticator,
+    1Password, Bitwarden), or enter the key by hand.</p>
+  <div class="twofactor-setup">
+    <img class="qr" src="{{ qr }}" alt="QR code of the two-factor key" width="245" height="245">
+    <dl class="props">
+      <dt>Key</dt><dd class="mono">{{ secret }}</dd>
+      <dt>Type</dt><dd>time-based (TOTP), 6 digits, 30 seconds</dd>
+    </dl>
+  </div>
+</div>
+<form method="post" class="card">
+  {{ form.csrf_token }}
+  <h2>2. Enter the code the app shows</h2>
+  {{ field(form.code, autocomplete="one-time-code", inputmode="numeric", placeholder="123456") }}
+  <button type="submit" class="btn primary">Turn on two-factor login</button>
+</form>
+{% endblock %}

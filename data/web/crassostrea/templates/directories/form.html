@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf %}
+{% block title %}{{ directory.name if directory else "Add directory" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ directory.name if directory else "Add directory" }}</h1>
+    <p><a href="{{ url_for('directories.index') }}">‹ Directories</a></p>
+  </div>
+  {% if directory %}
+  <form method="post" action="{{ url_for('directories.delete', directory_id=directory.id) }}"
+        data-confirm="Delete the directory {{ directory.name }}? Its addresses stay in the recipient lists.">
+    {{ csrf() }}<button type="submit" class="btn danger">Delete</button>
+  </form>
+  {% endif %}
+</div>
+
+{% if directory %}
+<div class="card">
+  <div class="card-head"><h2>Synchronisation</h2>
+    {% if directory.sync_error %}<span class="badge bad">failed</span>{% elif directory.synced_at %}<span class="badge good">ok</span>{% endif %}</div>
+  <dl class="props">
+    <dt>Last</dt><dd>{{ directory.synced_at|datetime }}</dd>
+    <dt>Recipients</dt><dd>{{ directory.sync_count if directory.sync_count is not none else '–' }}</dd>
+    <dt>Domains</dt><dd>{% for d in directory.domains %}<a href="{{ url_for('domains.edit', domain_id=d.id, _anchor='recipients') }}">{{ d.name }}</a>{{ ', ' if not loop.last }}{% else %}none: choose it as a domain's recipient validation{% endfor %}</dd>
+  </dl>
+  {% if directory.sync_error %}<div class="alert danger">{{ directory.sync_error }}</div>{% endif %}
+  <div class="actions">
+    <form method="post" action="{{ url_for('directories.test', directory_id=directory.id) }}" class="inline">
+      {{ csrf() }}<button type="submit" class="btn">Test</button>
+    </form>
+    <form method="post" action="{{ url_for('directories.sync', directory_id=directory.id) }}" class="inline">
+      {{ csrf() }}<button type="submit" class="btn primary">Synchronise now</button>
+    </form>
+    {% if directory.sync_error %}
+    <form method="post" action="{{ url_for('directories.sync', directory_id=directory.id) }}" class="inline"
+          data-confirm="Synchronise even though many recipients would be removed? Mail to them is rejected afterwards.">
+      {{ csrf() }}<input type="hidden" name="force" value="1"><button type="submit" class="btn danger">Synchronise, remove anyway</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="muted">Test reads the directory and counts its addresses per domain without changing anything.</p>
+</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('directories.edit', directory_id=directory.id) if directory else url_for('directories.create') }}">
+  {{ form.csrf_token }}
+  <div class="card">
+    <h2>Directory</h2>
+    {{ field(form.name, placeholder="Active Directory") }}
+    {{ field(form.kind) }}
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <h2>LDAP or Active Directory</h2>
+      {{ field(form.ldap_urls, placeholder="ldaps://dc1.example.com ldaps://dc2.example.com",
+               help="One or more, separated by spaces; the next is tried if one does not answer. Port 636 for ldaps://, 389 for ldap://; for an Active Directory forest, the global catalog (3269 / 3268).") }}
+      {{ check(form.ldap_starttls) }}
+      {{ check(form.ldap_verify, help="Against the system's CA certificates: add an internal CA to /etc/pki/ca-trust/source/anchors and run update-ca-trust. Turn off only for a test.") }}
+      {{ field(form.bind_dn, placeholder="CN=svc-mailgateway,OU=Service,DC=example,DC=com",
+               help="A read-only account. Empty: anonymous.") }}
+      {{ field(form.bind_password, autocomplete="new-password",
+               placeholder="unchanged" if directory and directory.bind_password else "",
+               help="Leave empty to keep the stored password." if directory else None) }}
+      {{ field(form.base_dn, placeholder="DC=example,DC=com") }}
+      {{ field(form.ldap_filter, placeholder=defaults.AD_FILTER, class="mono",
+               help="Empty: " ~ defaults.AD_FILTER ~ ". To leave out disabled accounts in Active Directory: (&(|(mail=*)(proxyAddresses=*))(!(userAccountControl:1.2.840.113556.1.4.803:=2)))") }}
+      {{ field(form.ldap_attributes, placeholder=defaults.AD_ATTRIBUTES,
+               help="Attributes holding addresses. Of proxyAddresses only smtp: entries count. OpenLDAP: e.g. mail mailAlternateAddress.") }}
+    </div>
+    <div class="card">
+      <h2>Microsoft 365</h2>
+      <p class="muted">Register an application in Microsoft Entra ID, give it the Microsoft Graph application
+        permissions <span class="mono">User.Read.All</span> and <span class="mono">Group.Read.All</span>, grant
+        admin consent and create a client secret. The addresses of all users (including shared mailboxes) and
+        groups are read.</p>
+      {{ field(form.tenant_id, placeholder="example.onmicrosoft.com") }}
+      {{ field(form.client_id, placeholder="00000000-0000-0000-0000-000000000000", class="mono") }}
+      {{ field(form.client_secret, autocomplete="new-password",
+               placeholder="unchanged" if directory and directory.client_secret else "",
+               help="Leave empty to keep the stored secret. Secrets expire: renew it in Entra ID in time." if directory else "Secrets expire: renew it in Entra ID in time.") }}
+    </div>
+  </div>
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+{% endblock %}

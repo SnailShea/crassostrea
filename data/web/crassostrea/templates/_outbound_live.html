@@ -1,0 +1,57 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if valkey_error %}<div class="alert danger">{{ valkey_error }}</div>{% endif %}
+<div class="grid-2">
+  <div class="card">
+    <h2>Deferred senders</h2>
+    <p class="muted">Senders that reached their limit in the last 7 days. Resetting lets one send again now.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sender</th><th>Last deferred</th><th>Messages</th><th></th></tr></thead>
+      <tbody>
+      {% for h in hits %}
+        <tr>
+          <td class="mono">{{ h.sender }}<div class="muted small">limit {{ h.limit }} per {{ h.period }}</div></td>
+          <td class="nowrap">{{ h.at|datetime }}</td>
+          <td>{{ h.count }}</td>
+          <td class="right">
+            <form method="post" action="{{ url_for('outbound.reset') }}" class="inline"
+                  data-confirm="Reset the count of {{ h.sender }}?">
+              {{ csrf() }}<input type="hidden" name="sender" value="{{ h.sender }}">
+              <button type="submit" class="link-button">Reset</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4" class="empty">No sender was deferred.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Current counts</h2>
+    <p class="muted">Recipients of the busiest senders in the current minute, hour or day.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Sender</th><th>Recipients</th><th></th></tr></thead>
+      <tbody>
+      {% for u in usage %}
+        <tr>
+          <td class="mono">{{ u.sender }}</td>
+          <td>{{ u.count }}{% if u.limit %} of {{ u.limit }}{% endif %} this {{ u.period }}</td>
+          <td class="right">
+            <form method="post" action="{{ url_for('outbound.reset') }}" class="inline">
+              {{ csrf() }}<input type="hidden" name="sender" value="{{ u.sender }}">
+              <button type="submit" class="link-button">Reset</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="empty">Nothing counted: no limit applies, or no outbound mail in the current period.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>

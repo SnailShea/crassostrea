@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}API documentation{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>API documentation</h1>
+    <p>Click <strong>Authorize</strong> and enter an API key from the <a href="{{ url_for('apikeys.index') }}">API keys</a>
+      page to try requests. Requests made here change real data.</p>
+  </div>
+  <a class="btn" href="{{ url_for('api.openapi') }}">OpenAPI JSON</a>
+</div>
+<link rel="stylesheet" href="{{ url_for('apidocs.asset', filename='swagger-ui.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='swagger-theme.css') }}">
+<div class="card swagger-wrap">
+  <div id="swagger-ui" data-spec-url="{{ url_for('api.openapi') }}"></div>
+</div>
+<script src="{{ url_for('apidocs.asset', filename='swagger-ui-bundle.js') }}"></script>
+<script src="{{ url_for('static', filename='swagger-init.js') }}"></script>
+{% endblock %}

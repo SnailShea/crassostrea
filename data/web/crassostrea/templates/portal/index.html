@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, next_field, pager %}
+{% block title %}My quarantine{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>My quarantine</h1>
+    <p>Messages to {{ current_user.email }} that were held back as spam. Release a message if it was
+      wrongly caught; messages are deleted automatically after a while.</p>
+  </div>
+</div>
+
+<div class="card">
+  <form method="get" class="filters">
+    <input type="search" name="q" value="{{ request.args.get('q', '') }}" placeholder="Search subject or sender">
+    <button type="submit" class="btn">Search</button>
+  </form>
+
+  <form method="post" action="{{ url_for('portal.bulk') }}">
+    {{ csrf() }}{{ next_field() }}
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="check"><input type="checkbox" data-select-all="ids" aria-label="Select all"></th>
+          <th>Received</th><th>From</th><th>Subject</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in pagination.items %}
+        <tr>
+          <td class="check"><input type="checkbox" name="ids" value="{{ item.id }}" aria-label="Select message {{ item.id }}"></td>
+          <td class="nowrap">{{ item.created_at|datetime }}</td>
+          <td class="truncate">{{ item.sender or '<>' }}</td>
+          <td class="truncate"><a href="{{ url_for('portal.show', item_id=item.id) }}">{{ item.subject or '(no subject)' }}</a></td>
+          <td class="nowrap">
+            {% if item.is_virus %}<span class="badge bad">virus</span>{% endif %}
+            {% if item.released_at %}<span class="badge good">released</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="empty">No quarantined messages.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if pagination.items %}
+    <div class="actions">
+      <span class="muted">Selected:</span>
+      <button type="submit" name="action" value="release" class="btn small"
+              data-confirm="Deliver the selected messages to your mailbox?">Release</button>
+      <button type="submit" name="action" value="delete" class="btn small danger"
+              data-confirm="Delete the selected messages?">Delete</button>
+    </div>
+    {% endif %}
+  </form>
+  {{ pager(pagination) }}
+</div>
+{% endblock %}

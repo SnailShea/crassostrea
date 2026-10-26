@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf %}
+{% block title %}Administrators{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Administrators</h1><p>Administrators manage everything; domain administrators only the mail of
+    their domains.</p></div>
+</div>
+<div class="grid-2">
+  <div class="card">
+    <h2>Accounts</h2>
+    <div class="live" data-live>
+{% include "_users_live.html" %}
+    </div>
+  </div>
+  <div class="card">
+    <h2>Add administrator</h2>
+    <form method="post">
+      {{ form.csrf_token }}
+      {{ field(form.username, autocomplete="off") }}
+      {{ field(form.password, autocomplete="new-password", help="At least 10 characters.") }}
+      {{ field(form.confirm, autocomplete="new-password") }}
+      {{ field(form.role) }}
+      {{ field(form.domains, size=6, help="For a domain administrator. Hold Ctrl (⌘) to choose several.") }}
+      <button type="submit" class="btn primary">Create</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

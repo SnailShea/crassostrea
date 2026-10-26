@@ -1,0 +1,26 @@
+[Unit]
+Description=Crassostrea: mail queue action (postqueue/postsuper/postcat)
+
+[Service]
+# root: postsuper and postcat need it. The helper only accepts fixed
+# actions and validates queue IDs (see the script).
+ExecStart=/usr/local/libexec/crassostrea/postfix-control
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=120
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/spool/postfix
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+# Postfix commands probe inet_protocols (AF_INET, AF_INET6) and the
+# interfaces (AF_NETLINK) at start: warnings, or a fatal error, without them.
+# PrivateNetwork= leaves them only a loopback interface of their own.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native

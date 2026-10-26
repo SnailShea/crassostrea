@@ -1,0 +1,37 @@
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if error %}<div class="alert warning">{{ error }}</div>{% endif %}
+  <div class="table-wrap">
+  <table class="log-table">
+  {% if source == 'postfix' %}
+    {% set show_host = config.CLUSTER_NODES %}
+    <thead><tr><th>Time</th>{% if show_host %}<th>Node</th>{% endif %}<th>Program</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+      <tr>
+        <td class="nowrap">{{ (e.get('time')|int if e.get('time') else None)|datetime }}</td>
+        {% if show_host %}<td class="nowrap mono">{{ e.get('host', '') }}</td>{% endif %}
+        <td class="nowrap mono">{{ e.get('program', '') }}</td>
+        <td><pre class="log">{{ e.get('message', '') }}</pre></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="{{ 4 if show_host else 3 }}" class="empty">No log lines.</td></tr>
+    {% endfor %}
+    </tbody>
+  {% else %}
+    <thead><tr><th>Time</th><th>Unit</th><th>Level</th><th>Message</th></tr></thead>
+    <tbody>
+    {% for e in entries %}
+      {% set level = priority_names.get(e.priority, 'info') %}
+      <tr>
+        <td class="nowrap">{{ e.time|datetime }}</td>
+        <td class="nowrap mono" title="{{ e.identifier }}{{ '[' ~ e.pid ~ ']' if e.pid }}">{{ e.unit }}</td>
+        <td><span class="badge {{ 'bad' if e.priority <= 3 else ('warn' if e.priority == 4 else ('info' if e.priority == 5 else '')) }}">{{ level }}</span></td>
+        <td><pre class="log">{{ e.message }}</pre></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="4" class="empty">No log lines{{ ' match' if request.args.get('q') or priority }}.</td></tr>
+    {% endfor %}
+    </tbody>
+  {% endif %}
+  </table>
+  </div>

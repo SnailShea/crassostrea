@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: mail the administrators about problems every 5 minutes
+
+[Timer]
+Unit=crassostrea-job@check-alerts.service
+OnBootSec=10min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

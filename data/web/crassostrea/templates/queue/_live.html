@@ -1,0 +1,46 @@
+{% from "_macros.html" import csrf %}
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if error %}<div class="alert warning">{{ error }}</div>{% endif %}
+<div class="card">
+  <form method="post" action="{{ url_for('queue.action') }}" data-async>
+    {{ csrf() }}
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th class="check"><input type="checkbox" data-select-all="ids" aria-label="Select all"></th>
+          <th>Queue ID</th><th>Queue</th><th>Arrived</th><th>Sender</th><th>Recipients</th><th class="num">Size</th></tr>
+      </thead>
+      <tbody>
+      {% for item in items %}
+        <tr>
+          <td class="check"><input type="checkbox" name="ids" value="{{ item.queue_id }}" aria-label="Select {{ item.queue_id }}"></td>
+          <td class="mono"><a href="{{ url_for('queue.show', queue_id=item.queue_id) }}">{{ item.queue_id }}</a></td>
+          <td><span class="badge {{ 'warn' if item.queue_name == 'deferred' else ('bad' if item.queue_name == 'hold' else 'info') }}">{{ item.queue_name }}</span></td>
+          <td class="nowrap">{{ item.arrival_time|datetime }}</td>
+          <td class="truncate">{{ item.sender or '<>' }}</td>
+          <td>
+            {% for r in item.recipients or [] %}
+            <div class="mono">{{ r.address }}</div>
+            {% if r.delay_reason %}<div class="muted">{{ r.delay_reason }}</div>{% endif %}
+            {% endfor %}
+          </td>
+          <td class="num nowrap">{{ item.message_size|filesize }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="empty">The queue is empty.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if items %}
+    <div class="actions">
+      <span class="muted">Selected:</span>
+      <button type="submit" name="action" value="deliver" class="btn small">Deliver now</button>
+      <button type="submit" name="action" value="hold" class="btn small">Hold</button>
+      <button type="submit" name="action" value="unhold" class="btn small">Release hold</button>
+      <button type="submit" name="action" value="delete" class="btn small danger"
+              data-confirm="Delete the selected messages?">Delete</button>
+    </div>
+    {% endif %}
+  </form>
+</div>

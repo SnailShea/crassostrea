@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}{{ rule.name if rule else "Add rule" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ rule.name if rule else "Add rule" }}</h1>
+    <p><a href="{{ url_for('content_rules.index') }}">‹ Content rules</a></p>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('content_rules.edit', rule_id=rule.id) if rule else url_for('content_rules.create') }}" class="card">
+  {{ form.csrf_token }}
+  {{ field(form.name, placeholder="Invoice scam") }}
+  <div class="form-row">
+    {{ field(form.field) }}
+    {{ field(form.header, placeholder="X-Mailer", help="With \"A header\" only.") }}
+    {{ field(form.match) }}
+  </div>
+  {{ field(form.value, class="mono", help="\"contains\" and \"is\" ignore the case of letters A to Z. A regular expression is PCRE; (?i) ignores case.") }}
+  {{ field(form.direction, help="Outbound: mail from the relay networks.") }}
+  <div class="form-row">
+    {{ field(form.action) }}
+    {{ field(form.score, step="0.1", help="Added to the spam score; negative favours such mail.") }}
+  </div>
+  {{ field(form.message, placeholder="Message rejected by the content rules", help="With \"Reject\": what the sending server is told.") }}
+  {{ check(form.active) }}
+  {{ field(form.comment) }}
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+{% endblock %}

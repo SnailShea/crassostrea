@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf %}
+{% block title %}Data loss prevention{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Data loss prevention</h1>
+    <p>Rules that stop outbound mail from the relay networks holding data that must not leave the organisation.</p>
+  </div>
+  <a href="{{ url_for('dlp.create') }}" class="btn primary">Add rule</a>
+</div>
+
+<div class="card">
+  <h2>Rules</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>Finds</th><th>Needs</th><th>Senders</th><th>Then</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rules %}
+      <tr class="{{ 'muted' if not r.active }}">
+        <td><a href="{{ url_for('dlp.edit', rule_id=r.id) }}">{{ r.name }}</a>
+          {% if not r.active %}<span class="badge">off</span>{% endif %}
+          {% if r.comment %}<div class="muted small">{{ r.comment }}</div>{% endif %}</td>
+        <td>{{ detectors[r.detector] }}{% if r.detector == 'regex' %}<div class="mono small">{{ r.pattern|truncate(60) }}</div>
+          {% elif r.detector == 'keywords' %}<div class="muted small">{{ r.pattern.splitlines()|join(', ')|truncate(60) }}</div>{% endif %}</td>
+        <td>{{ r.min_matches }}</td>
+        <td class="mono">{{ r.sender or 'all' }}</td>
+        <td><span class="badge {{ 'warn' if r.action == 'header' else 'bad' }}">{{ actions[r.action] }}</span></td>
+        <td class="right">
+          <form method="post" action="{{ url_for('dlp.delete', rule_id=r.id) }}" class="inline"
+                data-confirm="Delete the rule {{ r.name }}?">
+            {{ csrf() }}<button type="submit" class="link-button danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No rules: outbound mail is not checked for data.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">The subject, the text and text attachments (CSV, JSON, XML) are checked; Office documents and
+    PDFs are not. "Needs" counts different values, so a card number quoted twice counts once. Rejected mail
+    goes back to the sender with the rule's name; "Reject and quarantine" also keeps it in the
+    <a href="{{ url_for('quarantine.index', direction='outbound') }}">outbound quarantine</a>, where an
+    administrator can release it.</p>
+</div>
+
+<form method="post" action="{{ url_for('dlp.test') }}#test" class="card" id="test">
+  {{ test_form.csrf_token }}
+  <h2>Test the rules</h2>
+  {{ field(test_form.text, rows=6) }}
+  {{ field(test_form.sender, placeholder="alice@example.com",
+           help="Only the rules for this sender. Empty: every rule.") }}
+  <p><button type="submit" class="btn">Test</button></p>
+  {% if results is not none %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Rule</th><th>Found</th><th></th></tr></thead>
+    <tbody>
+    {% for res in results %}
+      <tr>
+        <td>{{ res.rule.name }}{% if not res.rule.active %} <span class="badge">off</span>{% endif %}</td>
+        <td>{% if not res.applies %}<span class="muted">not for this sender</span>
+            {% else %}{{ res.count }} of {{ res.rule.min_matches }}
+              {% if res.found %}<div class="mono small">{{ res.found|join(', ') }}{{ ' …' if res.count > res.found|length }}</div>{% endif %}
+            {% endif %}</td>
+        <td>{% if res.matched %}<span class="badge bad">matches</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">No rules.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</form>
+{% endblock %}

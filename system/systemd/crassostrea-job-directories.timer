@@ -1,0 +1,11 @@
+[Unit]
+Description=Crassostrea: synchronise recipients from LDAP and Microsoft 365 every 15 minutes
+
+[Timer]
+Unit=crassostrea-job@sync-directories.service
+OnBootSec=3min
+OnUnitActiveSec=15min
+RandomizedDelaySec=1min
+
+[Install]
+WantedBy=timers.target

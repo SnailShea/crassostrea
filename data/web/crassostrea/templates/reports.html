@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}DMARC & TLS reports{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>DMARC &amp; TLS reports</h1>
+    <p>What mailbox providers report about mail using your domains (DMARC) and about their TLS connections to
+      this gateway (TLS-RPT). Reports go to <span class="mono">{{ address }}</span>.</p>
+  </div>
+  <div class="actions">
+    {% for p in periods %}<a href="{{ url_for('reports.index', days=p, domain=domain or None) }}" class="btn small {{ 'primary' if p == days }}">{{ p }} days</a>{% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>Domains</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Domain</th><th>DMARC reports</th><th>Messages</th><th>Pass DMARC</th><th>TLS reports</th><th>TLS sessions failed</th></tr></thead>
+    <tbody>
+    {% for name in (domains + (summary.keys()|list))|unique|sort %}
+      {% set s = summary.get(name, {}) %}
+      <tr>
+        <td><a href="{{ url_for('reports.index', domain=name, days=days) }}" class="{{ 'active' if name == domain }}">{{ name }}</a></td>
+        <td>{{ s.dmarc_reports or 0 }}</td>
+        <td>{{ s.messages or 0 }}</td>
+        <td>{% if s.messages %}{% set pct = (100 * s.passed / s.messages)|round(1) %}<span class="badge {{ 'good' if pct >= 98 else 'warn' if pct >= 90 else 'bad' }}">{{ pct }}%</span>{% else %}–{% endif %}</td>
+        <td>{{ s.tls_reports or 0 }}</td>
+        <td>{% if s.tls_reports %}<span class="badge {{ 'bad' if s.tls_failed else 'good' }}">{{ s.tls_failed }} of {{ s.tls_ok + s.tls_failed }}</span>{% else %}–{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No domains.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">Choose a domain for its sources, failures and the DNS records that send its reports here.</p>
+</div>
+
+{% if detail %}
+{% if detail.dns %}
+<div class="card">
+  <h2>DNS for {{ domain }}</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Name</th><th>TXT record</th><th>Published</th></tr></thead>
+    <tbody>
+    {% for r in detail.dns %}
+      <tr>
+        <td class="mono">{{ r.name }}</td>
+        <td class="mono small">{{ r.expected }}{% if r.note %}<div class="muted">{{ r.note }}</div>{% endif %}</td>
+        <td>{% if r.found is none %}<span class="badge warn">lookup failed</span>
+            {% elif r.ok %}<span class="badge good">ok</span>
+            {% elif r.found %}<span class="badge warn">without this address</span><div class="mono small">{{ r.found|join(' | ') }}</div>
+            {% else %}<span class="badge bad">missing</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Failing DMARC</h2>
+    <p class="muted">Sources whose mail with {{ domain }} in From passed neither aligned DKIM nor SPF: forgeries,
+      or a service of yours that still needs DKIM or SPF.</p>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>From</th><th>Messages</th></tr></thead>
+      <tbody>
+      {% for ip, header_from, count in detail.failing %}
+        <tr><td class="mono">{{ ip }}</td><td class="mono small">{{ header_from }}</td><td>{{ count }}</td></tr>
+      {% else %}
+        <tr><td colspan="3" class="empty">None.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Passing DMARC</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Source</th><th>Messages</th></tr></thead>
+      <tbody>
+      {% for ip, count in detail.passing %}
+        <tr><td class="mono">{{ ip }}</td><td>{{ count }}</td></tr>
+      {% else %}
+        <tr><td colspan="2" class="empty">None.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>TLS failures</h2>
+  <p class="muted">Connections of other providers to the MX of {{ domain }} that failed TLS (e.g. an expired
+    certificate, or an MTA-STS policy that does not match).</p>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Reported by</th><th>Until</th><th>Result</th><th>MX</th><th>Sessions</th></tr></thead>
+    <tbody>
+    {% for f in detail.tls_failures %}
+      <tr><td>{{ f.org }}</td><td class="nowrap">{{ f.end|datetime }}</td><td class="mono">{{ f.result }}</td>
+        <td class="mono">{{ f.mx }}</td><td>{{ f.count }}</td></tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">None.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Reports</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Kind</th><th>From</th><th>Period</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for r in detail.dmarc %}
+      <tr><td>DMARC</td><td>{{ r.org }}</td><td class="nowrap">{{ r.begin|datetime }} – {{ r.end|datetime }}</td>
+        <td>{{ r.passed }} of {{ r.messages }} passed{% if r.policy %} <span class="muted">(p={{ r.policy }})</span>{% endif %}</td></tr>
+    {% endfor %}
+    {% for r in detail.tls %}
+      <tr><td>TLS</td><td>{{ r.org }}</td><td class="nowrap">{{ r.begin|datetime }} – {{ r.end|datetime }}</td>
+        <td>{{ r.failed }} of {{ r.successful + r.failed }} failed{% if r.policy_type %} <span class="muted">({{ r.policy_type }})</span>{% endif %}</td></tr>
+    {% endfor %}
+    {% if not detail.dmarc and not detail.tls %}<tr><td colspan="4" class="empty">No reports yet.</td></tr>{% endif %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+
+{% if current_user.is_full_admin %}
+<form method="post" action="{{ url_for('reports.save_settings') }}" class="card">
+  {{ form.csrf_token }}
+  <h2>Settings</h2>
+  {{ field(form.report_retention_days) }}
+  {{ check(form.dmarc_send_reports, help="Once a day, to every domain that publishes a rua address and sent mail here. From dmarc-noreply@" ~ hostname ~ ". Good practice, and it helps senders find forgeries of their domains.") }}
+  <p class="muted">Sending TLS reports about this gateway's own deliveries needs Postfix 3.10 or later.</p>
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+{% endif %}
+{% endblock %}

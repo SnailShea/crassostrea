@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}Branding{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Branding</h1><p>The name, colour, logo and footer of the web interface and the login page.</p></div>
+</div>
+
+<form method="post" action="{{ url_for('settings.save_branding') }}" enctype="multipart/form-data"
+      class="card" id="branding">
+  {{ branding_form.csrf_token }}
+  <div class="grid-2">
+    <div>
+      {{ field(branding_form.brand_name) }}
+      <div class="field">
+        {{ branding_form.brand_accent.label() }}
+        {{ branding_form.brand_accent() }}
+        {% for error in branding_form.brand_accent.errors %}<div class="error">{{ error }}</div>{% endfor %}
+      </div>
+      {{ check(branding_form.default_accent) }}
+      {{ field(branding_form.brand_footer, help=branding_form.brand_footer.description) }}
+      {{ field(branding_form.brand_theme, help="Users can still switch with the theme toggle.") }}
+    </div>
+    <div>
+      <div class="field">
+        {{ branding_form.logo.label() }}
+        {% if brand.has_logo %}<p><img class="logo-preview" src="{{ url_for('branding.logo', v=brand.version) }}" alt="Current logo"></p>{% endif %}
+        {{ branding_form.logo(accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml") }}
+        <div class="help">PNG, JPEG, GIF, WebP or SVG, max. 512 KiB. Shown next to the name; use a transparent background.</div>
+      </div>
+      {% if brand.has_logo %}{{ check(branding_form.remove_logo) }}{% endif %}
+      <div class="field">
+        {{ branding_form.favicon.label() }}
+        <p><img class="logo-preview" src="{{ url_for('branding.favicon', v=brand.version) }}" alt="Current favicon" width="32" height="32"></p>
+        {{ branding_form.favicon(accept="image/png,image/x-icon,image/svg+xml,image/gif,.ico") }}
+        <div class="help">ICO, PNG, GIF or SVG, max. 128 KiB.</div>
+      </div>
+      {% if brand.has_favicon %}{{ check(branding_form.remove_favicon) }}{% endif %}
+    </div>
+  </div>
+  <button type="submit" class="btn primary">Save branding</button>
+</form>
+
+{% endblock %}

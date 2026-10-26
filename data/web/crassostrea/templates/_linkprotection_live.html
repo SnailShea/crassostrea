@@ -1,0 +1,26 @@
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+<div class="card">
+  <div class="card-head"><h2>Recent clicks</h2>
+    <span>{% if blocked_only %}<a href="{{ url_for('linkprotection.index') }}">all</a> · <strong>blocked</strong>
+      {% else %}<strong>all</strong> · <a href="{{ url_for('linkprotection.index', blocked=1) }}">blocked</a>{% endif %}</span></div>
+  {% if clicks_error %}<div class="alert danger">{{ clicks_error }}</div>{% endif %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Time</th><th>Site</th><th>Link</th><th>From</th><th></th></tr></thead>
+    <tbody>
+    {% for c in clicks %}
+      <tr>
+        <td class="nowrap">{{ c.at|datetime }}</td>
+        <td class="mono">{{ c.host }}</td>
+        <td class="mono small">{{ c.url|truncate(80) }}</td>
+        <td class="mono nowrap">{{ c.ip }}</td>
+        <td>{% if c.blocked %}<span class="badge bad" title="{{ c.reason }}">blocked</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="5" class="empty">No clicks yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">The last 1000 clicks are kept.</p>
+</div>

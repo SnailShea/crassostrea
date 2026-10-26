@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: rewrite the rspamd/postfix maps every 10 minutes
+
+[Timer]
+Unit=crassostrea-job@sync.service
+OnBootSec=2min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Queued message {{ queue_id }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Queued message <span class="mono">{{ queue_id }}</span></h1>
+    <p><a href="{{ url_for('queue.index') }}">‹ Mail queue</a></p>
+  </div>
+</div>
+<div class="card">
+  <pre class="message">{{ content }}</pre>
+</div>
+{% endblock %}

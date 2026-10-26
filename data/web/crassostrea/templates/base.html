@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"{% if theme %} data-theme="{{ theme }}"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="{{ url_for('branding.favicon', v=brand.version) }}">
+  <title>{% block title %}{% endblock %} · {{ brand.name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  {% if brand.accent %}<link rel="stylesheet" href="{{ url_for('branding.stylesheet', v=brand.version) }}">{% endif %}
+</head>
+<body>
+{% from "_macros.html" import theme_toggle with context %}
+{% if current_user.is_authenticated %}
+<div class="layout">
+  {% set ep = request.endpoint or '' %}
+  <nav class="sidebar">
+    <div class="brand">
+      {% if brand.has_logo %}<img src="{{ url_for('branding.logo', v=brand.version) }}" alt="">{% endif %}
+      <span class="brand-text">{{ brand.name }}<small>{{ hostname }}</small></span>
+    </div>
+    {% if current_user.is_admin %}
+      {% set nav_sections, nav_tabs = navigation(current_user, ep) %}
+      {% set failing = problems() %}
+      {% for title, entries in nav_sections %}
+      {% if title %}<div class="section">{{ title }}</div>{% endif %}
+      {% for entry in entries %}
+      <a href="{{ url_for(entry.endpoint) }}" class="{{ 'active' if entry.active }}">{{ entry.label }}
+        {%- if failing and entry.endpoint == 'monitoring.index' %} <span class="problem-dot"
+          title="{{ failing|length }} problem(s): {{ failing.keys()|join(', ') }}"
+          aria-label="{{ failing|length }} problem(s)">{{ failing|length }}</span>{% endif %}</a>
+      {% endfor %}
+      {% endfor %}
+      {% if config.DOCS_ENABLED %}<a href="/docs/" target="_blank" rel="noopener">Documentation ↗</a>{% endif %}
+      {% if current_user.is_full_admin %}<a href="/rspamd/" target="_blank" rel="noopener">Rspamd UI ↗</a>{% endif %}
+    {% else %}
+    <a href="{{ url_for('portal.index') }}" class="{{ 'active' if ep in ('portal.index', 'portal.show') }}">My quarantine</a>
+    <a href="{{ url_for('portal.settings') }}" class="{{ 'active' if ep == 'portal.settings' }}">My settings</a>
+    {% endif %}
+    <div class="spacer"></div>
+    {{ theme_toggle() }}
+    <a href="{{ url_for('auth.account') }}" class="{{ 'active' if ep == 'auth.account' }}">{{ current_user.username }}</a>
+    <form method="post" action="{{ url_for('auth.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="link-button">Log out</button>
+    </form>
+  </nav>
+  <main class="main">
+    {% if nav_tabs %}
+    <nav class="tabs page-tabs" aria-label="Pages of this group">
+      {% for tab in nav_tabs %}<a href="{{ url_for(tab.endpoint) }}" class="{{ 'active' if tab.active }}"{% if tab.active %} aria-current="page"{% endif %}>{{ tab.label }}
+        {%- if failing and tab.endpoint == 'monitoring.index' %} <span class="problem-dot" aria-label="{{ failing|length }} problem(s)">{{ failing|length }}</span>{% endif %}</a>{% endfor %}
+    </nav>
+    {% endif %}
+    {% include "_flashes.html" %}
+    {% block content %}{% endblock %}
+    {% if brand.footer %}<p class="brand-footer">{{ brand.footer }}</p>{% endif %}
+  </main>
+</div>
+{% else %}
+  {% block public %}{% endblock %}
+{% endif %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

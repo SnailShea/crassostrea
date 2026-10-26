@@ -1,0 +1,61 @@
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% from "_macros.html" import csrf %}
+{# Staging test of the Let's Encrypt names and the Apply step: in the live
+   region, so the result and the button appear without reloading the page #}
+{% if mode == 'letsencrypt' and not settings.cluster %}
+<form method="post" action="{{ url_for('tls.letsencrypt_apply') }}" class="card" id="staging-test">
+  {{ csrf() }}
+  <div class="card-head"><h2>Staging test</h2>
+    {% if staging_test.state == 'running' %}<span class="badge info">testing…</span>
+    {% elif passed_test %}<span class="badge good">passed</span>
+    {% elif staging_test.state in ('failed', 'stale') %}<span class="badge bad">failed</span>{% endif %}</div>
+  {% if staging_test.state == 'running' %}
+  <p>Let's Encrypt's staging environment is validating <span class="mono">{{ staging_test.names|join(', ') }}</span>.
+    This takes up to a few minutes; the result appears here.</p>
+  <button type="submit" class="btn primary" disabled>Apply</button>
+  {% elif passed_test %}
+  {% for name in passed_test.names %}<input type="hidden" name="names" value="{{ name }}">{% endfor %}
+  <p>Passed {{ passed_test.at_time|datetime }} for <span class="mono">{{ passed_test.names|join(', ') }}</span>.
+    Apply requests the certificate for these names{% if settings.mode != 'letsencrypt' %} and turns off the uploaded
+    certificate{% endif %}.</p>
+  <button type="submit" class="btn primary" {{ 'disabled' if busy }}
+          data-confirm="Request the certificate for these names from Let's Encrypt?">Apply</button>
+  {% elif staging_test.state in ('failed', 'stale') and staging_test.names %}
+  <p>{{ 'The test stopped without a result.' if staging_test.state == 'stale' else staging_test.message }}
+    (<span class="mono">{{ staging_test.names|join(', ') }}</span>). Correct the names or their DNS records and test
+    again.</p>
+  {% if staging_test.log %}<details><summary>Log</summary><pre class="log">{{ staging_test.log }}</pre></details>{% endif %}
+  <button type="submit" class="btn primary" disabled>Apply</button>
+  {% else %}
+  <p class="muted">Apply becomes available after a passed staging test (valid for 24 hours).</p>
+  <button type="submit" class="btn primary" disabled>Apply</button>
+  {% endif %}
+</form>
+{% endif %}
+
+{% set labels = {'le_test': "Let's Encrypt staging test", 'le_apply': "Let's Encrypt certificate",
+                 'manual_apply': 'Uploaded certificate', 'versions': 'TLS versions', 'request': 'Request'} %}
+{% set badges = {'ok': 'good', 'failed': 'bad', 'running': 'info', 'stale': 'warn'} %}
+{% set entries = [] %}
+{% for key in labels if status.get(key) %}{% set _ = entries.append((key, status[key])) %}{% endfor %}
+{% if entries or busy %}
+<div class="card">
+  <div class="card-head"><h2>Changes</h2>
+    {% if busy %}<span class="badge info">applying…</span>{% endif %}</div>
+  <div class="table-wrap">
+  <table>
+    <tbody>
+    {% for key, entry in entries|sort(attribute='1.at', reverse=True) %}
+      <tr>
+        <td class="nowrap">{{ labels[key] }}</td>
+        <td><span class="badge {{ badges.get(entry.state, '') }}">{{ 'stopped' if entry.state == 'stale' else entry.state }}</span></td>
+        <td class="nowrap muted">{{ entry.at_time|datetime }}</td>
+        <td>{{ entry.message }}{% if entry.names %} <span class="mono">({{ entry.names|join(', ') }})</span>{% endif %}
+          {% if entry.log %}<details><summary>Log</summary><pre class="log">{{ entry.log }}</pre></details>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}

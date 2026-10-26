@@ -1,0 +1,66 @@
+# inbound mail with postscreen on 25/tcp
+smtp       inet  n       -       n       -       1       postscreen
+# 10025/inet (PROXY protocol for HAProxy) is added by system/configure.sh when
+# HAPROXY_LISTENER=y
+smtpd      pass  -       -       n       -       -       smtpd
+
+# used by the web UI to re-inject released quarantine mails
+# milters are disabled, the message was already scanned: loopback only
+127.0.0.1:590 inet n      -       n       -       -       smtpd
+  -o smtpd_helo_restrictions=
+  -o smtpd_client_restrictions=permit_mynetworks,reject
+  -o smtpd_recipient_restrictions=permit_mynetworks,reject
+  -o smtpd_milters=
+  -o non_smtpd_milters=
+  -o syslog_name=postfix/quarantine
+
+tlsproxy   unix  -       -       n       -       0       tlsproxy
+dnsblog    unix  -       -       n       -       0       dnsblog
+pickup     fifo  n       -       n       60      1       pickup
+cleanup    unix  n       -       n       -       0       cleanup
+qmgr       fifo  n       -       n       300     1       qmgr
+tlsmgr     unix  -       -       n       1000?   1       tlsmgr
+rewrite    unix  -       -       n       -       -       trivial-rewrite
+bounce     unix  -       -       n       -       0       bounce
+defer      unix  -       -       n       -       0       bounce
+trace      unix  -       -       n       -       0       bounce
+verify     unix  -       -       n       -       1       verify
+flush      unix  n       -       n       1000?   0       flush
+proxymap   unix  -       -       n       -       -       proxymap
+proxywrite unix  -       -       n       -       1       proxymap
+smtp       unix  -       -       n       -       -       smtp
+relay      unix  -       -       n       -       -       smtp
+  -o syslog_name=postfix/relay
+showq      unix  n       -       n       -       -       showq
+error      unix  -       -       n       -       -       error
+retry      unix  -       -       n       -       -       error
+discard    unix  -       -       n       -       -       discard
+local      unix  -       n       n       -       -       local
+anvil      unix  -       -       n       -       1       anvil
+scache     unix  -       -       n       -       1       scache
+
+# start watchdog-specific
+# logs to local7 (hidden)
+127.0.0.1:589 inet n      -       n       -       -       smtpd
+  -o smtpd_client_restrictions=permit_mynetworks,reject
+  -o syslog_name=watchdog
+  -o syslog_facility=local7
+  -o smtpd_milters=
+  -o cleanup_service_name=watchdog_cleanup
+  -o non_smtpd_milters=
+watchdog_cleanup unix  n       -       n       -       0       cleanup
+  -o syslog_name=watchdog
+  -o syslog_facility=local7
+  -o queue_service_name=watchdog_qmgr
+watchdog_qmgr fifo  n       -       n       300     1       qmgr
+  -o syslog_facility=local7
+  -o syslog_name=watchdog
+  -o rewrite_service_name=watchdog_rewrite
+watchdog_rewrite    unix  -       -       n       -       -       trivial-rewrite
+   -o syslog_facility=local7
+   -o syslog_name=watchdog
+   -o local_transport=watchdog_discard
+watchdog_discard    unix  -       -       n       -       -       discard
+   -o syslog_facility=local7
+   -o syslog_name=watchdog
+# end watchdog-specific

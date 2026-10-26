@@ -1,0 +1,6 @@
+[Unit]
+Description=Crassostrea: set the time zone (chosen in the web UI)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/set-timezone

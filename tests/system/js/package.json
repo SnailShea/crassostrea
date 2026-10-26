@@ -1,0 +1,8 @@
+{
+  "name": "crassostrea-ui-tests",
+  "private": true,
+  "description": "Behaviour tests of data/web/crassostrea/static/app.js in jsdom (tests/system/run.sh js)",
+  "dependencies": {
+    "jsdom": "24.1.3"
+  }
+}

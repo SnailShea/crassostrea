@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Applies what the web UI writes for Postfix (crassostrea-postfix-reload.service,
+# started by crassostrea-postfix-reload.path when one of the files changes):
+#   message_size_limit  the message size limit in bytes (Settings), set in
+#                       main.cf; system/configure.sh keeps it when it renders
+#                       main.cf again
+#   rate_limits         the per-host limits (Rate limits page): parameter=value
+#                       lines, set with postconf -e; configure.sh keeps them
+#   ptr_check           off, defer or reject (Settings): sf_ptr_check and
+#                       unknown_client_reject_code; configure.sh keeps them
+#   relay_networks.cidr, rate_limit_exempt.cidr, client_exempt.cidr
+#                       read by Postfix itself
+# and reloads Postfix if it runs. The web UI runs unprivileged, so the value is
+# checked before it goes into main.cf.
+set -o pipefail
+
+DYNAMIC=${POSTFIX_DYNAMIC_DIR:-/var/lib/crassostrea/postfix}
+# 1 MiB to 100 MiB, the range of the setting
+MIN_LIMIT=1048576
+MAX_LIMIT=104857600
+
+if [[ -f ${DYNAMIC}/message_size_limit ]]; then
+  limit=$(tr -d '[:space:]' < "${DYNAMIC}/message_size_limit")
+  if [[ ${limit} =~ ^[0-9]{1,10}$ ]] && (( limit >= MIN_LIMIT && limit <= MAX_LIMIT )); then
+    if [[ $(postconf -h message_size_limit) != "${limit}" ]]; then
+      postconf -e "message_size_limit=${limit}" || exit 1
+      echo "message_size_limit set to ${limit}"
+    fi
+  else
+    echo "Ignoring ${DYNAMIC}/message_size_limit: not a size from ${MIN_LIMIT} to ${MAX_LIMIT} bytes" >&2
+  fi
+fi
+
+# smtpd_client_*_limit: only these parameters, whole numbers
+if [[ -f ${DYNAMIC}/rate_limits ]]; then
+  while IFS= read -r line; do
+    if [[ ${line} =~ ^(smtpd_client_(connection_count|connection_rate|message_rate|recipient_rate)_limit)=([0-9]{1,6})$ ]]
+    then
+      if [[ $(postconf -h "${BASH_REMATCH[1]}") != "${BASH_REMATCH[3]}" ]]; then
+        postconf -e "${BASH_REMATCH[1]}=${BASH_REMATCH[3]}" || exit 1
+        echo "${BASH_REMATCH[1]} set to ${BASH_REMATCH[3]}"
+      fi
+    elif [[ -n ${line} ]]; then
+      echo "Ignoring a line of ${DYNAMIC}/rate_limits: ${line:0:80}" >&2
+    fi
+  done < "${DYNAMIC}/rate_limits"
+fi
+
+# Hosts without a reverse DNS name: main.cf's smtpd_client_restrictions ends
+# with $sf_ptr_check
+if [[ -f ${DYNAMIC}/ptr_check ]]; then
+  mode=$(tr -d '[:space:]' < "${DYNAMIC}/ptr_check")
+  case ${mode} in
+    off) check= code= ;;
+    defer) check=reject_unknown_reverse_client_hostname code=450 ;;
+    reject) check=reject_unknown_reverse_client_hostname code=550 ;;
+    *) echo "Ignoring ${DYNAMIC}/ptr_check: not off, defer or reject" >&2; mode= ;;
+  esac
+  if [[ -n ${mode} && $(postconf -h sf_ptr_check 2> /dev/null) != "${check}" ]]; then
+    postconf -e "sf_ptr_check=${check}" || exit 1
+    echo "PTR check: ${mode}"
+  fi
+  if [[ -n ${code} && $(postconf -h unknown_client_reject_code) != "${code}" ]]; then
+    postconf -e "unknown_client_reject_code=${code}" || exit 1
+  fi
+fi
+
+if systemctl is-active --quiet postfix.service; then
+  postfix reload
+fi

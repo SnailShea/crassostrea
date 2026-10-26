@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_macros.html" import action_badge, csrf %}
+{% block title %}Logged message{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ entry.subject or "(no subject)" }}</h1>
+    <p><a href="{{ url_for('maillog.index') }}">‹ Mail log</a></p>
+  </div>
+</div>
+
+{% if entry.is_virus %}
+<div class="alert danger">ClamAV detected a virus in this message.</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Details</h2>
+    <dl class="props">
+      <dt>Received</dt><dd>{{ entry.created_at|datetime }}</dd>
+      <dt>Direction</dt><dd><span class="badge {{ 'warn' if entry.direction == 'outbound' else 'info' }}">{{ entry.direction }}</span></dd>
+      <dt>Result</dt><dd>{{ action_badge(entry.action) }} score {{ '%.2f'|format(entry.score) }}</dd>
+      <dt>Envelope sender</dt><dd class="mono">{{ entry.sender or '<>' }}</dd>
+      {% if entry.header_from %}<dt>From header</dt><dd class="mono">{{ entry.header_from }}</dd>{% endif %}
+      <dt>Recipients</dt><dd class="mono">{% for r in entry.rcpt_list %}<div>{{ r }}</div>{% else %}–{% endfor %}</dd>
+      <dt>Client IP</dt><dd class="mono">{{ entry.ip or '–' }}</dd>
+      <dt>Queue ID</dt><dd class="mono">{% if entry.qid %}<a href="{{ url_for('logs.index', q=entry.qid) }}" title="Postfix log of this message">{{ entry.qid }}</a>{% else %}–{% endif %}</dd>
+      <dt>Message-ID</dt><dd class="mono">{{ entry.message_id or '–' }}</dd>
+      <dt>Size</dt><dd>{{ entry.size|filesize }}</dd>
+      <dt>Scan time</dt><dd>{{ entry.scan_ms }} ms</dd>
+      {% if quarantined %}
+      <dt>Quarantine</dt><dd>{% for item in quarantined %}<div><a href="{{ url_for('quarantine.show', item_id=item.id) }}">{{ item.rcpt }}</a>{% if item.released_at %} <span class="badge good">released</span>{% endif %}</div>{% endfor %}</dd>
+      {% endif %}
+      {% if entry.requeued_at %}<dt>Re-queued</dt><dd>{{ entry.requeued_at|datetime }} by {{ entry.requeued_by }}</dd>{% endif %}
+    </dl>
+  </div>
+
+  <div class="card">
+    <h2>Queue again</h2>
+    <p class="muted">Delivers the message as it was scanned once more, through Postfix and without a second scan
+      {%- if entry.direction == 'outbound' %}, DKIM-signed for the sender's domain{% endif %}. Recipients who
+      already received it get a second copy. It carries an <code>X-Mail-Log-Requeued</code> header.</p>
+    <form method="post" action="{{ url_for('maillog.requeue', entry_id=entry.id) }}">
+      {{ csrf() }}
+      {% for r in entry.rcpt_list %}
+      <div class="check-field"><input type="checkbox" id="rcpt-{{ loop.index }}" name="rcpts" value="{{ r }}" checked><label for="rcpt-{{ loop.index }}" class="mono">{{ r }}</label></div>
+      {% endfor %}
+      {% if entry.is_virus %}
+      <div class="check-field"><input type="checkbox" id="confirm_virus" name="confirm_virus" value="yes">
+        <label for="confirm_virus">I understand this message contains a virus</label></div>
+      {% endif %}
+      <div class="actions">
+        <button type="submit" class="btn primary" {{ 'disabled' if not entry.rcpt_list }}
+                data-confirm="Deliver this message again to the selected recipients?">Queue again</button>
+      </div>
+    </form>
+    <p><a href="{{ url_for('maillog.raw', entry_id=entry.id) }}">Download the message (.eml)</a></p>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Score breakdown</h2><span>{{ action_badge(entry.action) }} {{ '%.2f'|format(entry.score) }}</span></div>
+  {% set symbols = entry.symbol_list %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Rule</th><th class="num">Score</th><th>Details</th></tr></thead>
+    <tbody>
+    {% for s in symbols %}
+      <tr>
+        <td class="nowrap"><span class="mono">{{ s.name }}</span>
+          {%- if s.name|explain_symbol %}<div class="symbol-help">{{ s.name|explain_symbol }}</div>{% endif %}</td>
+        <td class="num {{ 'score-pos' if s.score > 0 else ('score-neg' if s.score < 0 else 'muted') }}">{{ '%+.2f'|format(s.score) if s.score else '0.00' }}</td>
+        <td class="mono">{{ s.options|join(', ') }}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="empty">No rules matched.</td></tr>
+    {% endfor %}
+    </tbody>
+    {% if symbols %}
+    <tfoot><tr><th>Total</th><th class="num">{{ '%.2f'|format(entry.score) }}</th><th></th></tr></tfoot>
+    {% endif %}
+  </table>
+  </div>
+</div>
+
+{% include "quarantine/_content.html" %}
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, csrf %}
+{% block title %}{{ 'Allow list' if list_type == 'allow' else 'Block list' }}{% endblock %}
+{% block content %}
+{% set allow = list_type == 'allow' %}
+<div class="page-head">
+  <div>
+    <h1>{{ 'Allow list' if allow else 'Block list' }}</h1>
+    <p>{% if allow %}Senders and IP addresses whose mail is never treated as spam.{% else %}Senders and IP addresses
+      whose mail is always rejected.{% endif %} Global entries apply to every domain; per-domain entries are
+      managed on the domain page.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Add {{ 'an allow' if allow else 'a block' }} entry</h2>
+  <form method="post" action="{{ url_for('lists.add') }}" class="inline-form">
+    {{ form.csrf_token }}
+    <input type="hidden" name="list_type" value="{{ list_type }}">
+    {{ field(form.kind) }}
+    {{ field(form.value, placeholder="user@example.org, *@example.org, example.org or 192.0.2.0/24") }}
+    {{ field(form.comment) }}
+    <div class="field"><button type="submit" class="btn primary">Add</button></div>
+  </form>
+  <p class="muted">Sender entries match the envelope sender and the From header.{% if allow %} Allow entries are
+    ignored when the sender fails its own DMARC or SPF policy; viruses are always rejected.{% endif %}</p>
+</div>
+
+<div class="card">
+  <h2>Global {{ list_type }} entries</h2>
+  <div class="live" data-live>
+{% include "_lists_live.html" %}
+  </div>
+</div>
+
+{% if domain_entries %}
+<div class="card">
+  <h2>Domains with their own {{ list_type }} entries</h2>
+  <ul>
+    {% for domain, count in domain_entries %}
+    <li><a href="{{ url_for('domains.edit', domain_id=domain.id, _anchor='lists') }}">{{ domain.name }}</a>
+      <span class="muted">({{ count }})</span></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

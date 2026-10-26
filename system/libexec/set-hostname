@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Changes the gateway's hostname as requested in the web UI (Settings ->
+# Gateway hostname): crassostrea-hostname.service, started by
+# crassostrea-hostname.path while the request file exists. The web UI runs
+# unprivileged, so the name is checked again here.
+#
+# Does for the new name what system/configure.sh would do on a single
+# gateway: CRASSOSTREA_HOSTNAME in crassostrea.conf (later configure.sh runs
+# keep it), Postfix's myhostname, the names nginx answers to
+# (system/lib/nginx.sh), a restart of the services that read the name, and a
+# certificate for it. In a cluster the name identifies the
+# member (HA_NODES, Galera, keepalived) and is not changed here.
+set -o pipefail
+
+REQUEST=/var/lib/crassostrea/web/hostname
+SF_LIB=${SF_LIB:-/usr/local/lib/crassostrea}
+CONF=/etc/crassostrea/crassostrea.conf
+EXTRA=/etc/postfix/extra.cf
+DMARC_CONF=/etc/rspamd/local.d/dmarc.conf
+# Services that read CRASSOSTREA_HOSTNAME (restarted only if they run)
+UNITS=(crassostrea-web.service crassostrea-web-internal.service crassostrea-watchdog.service
+       crassostrea-logship.service)
+
+# shellcheck source=../lib/nginx.sh
+source "${SF_LIB}/lib/nginx.sh"
+
+[[ -f ${REQUEST} ]] || exit 0
+name=$(tr -d '[:space:]' < "${REQUEST}" | tr '[:upper:]' '[:lower:]')
+# consumed even if it is refused, so the path unit does not start this again
+rm -f "${REQUEST}"
+
+# the same rule as setup.sh
+if ! [[ ${#name} -le 253 && ${name} =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$ ]]; then
+  echo "Refusing the hostname change: '${name}' is not a valid host name" >&2
+  exit 1
+fi
+current=$(sed -n 's/^CRASSOSTREA_HOSTNAME=//p' "${CONF}" | tr -d "\"'")
+if [[ ${name} == "${current}" ]]; then
+  echo "The hostname already is ${name}"
+  exit 0
+fi
+if [[ -n $(sed -n 's/^HA_NODES=//p' "${CONF}" | tr -d "\"'[:space:]") ]]; then
+  echo "Refusing the hostname change: this gateway is a cluster member, its name identifies it" >&2
+  exit 1
+fi
+
+echo "Changing the hostname from ${current} to ${name}"
+# The name is validated above: safe in sed's replacement
+sed -i "s/^CRASSOSTREA_HOSTNAME=.*/CRASSOSTREA_HOSTNAME=${name}/" "${CONF}" || exit 1
+if [[ -f ${EXTRA} ]]; then
+  sed -i "s/^myhostname = .*/myhostname = ${name}/" "${EXTRA}"
+fi
+# The sender of DMARC reports (configure.sh writes it)
+if [[ -f ${DMARC_CONF} ]]; then
+  sed -i "s/\"\(dmarc-noreply@\)\?${current//./\\.}\"/\"\1${name}\"/" "${DMARC_CONF}"
+  systemctl try-reload-or-restart rspamd.service
+fi
+postconf -e "myhostname=${name}" || exit 1
+if systemctl is-active --quiet postfix.service; then
+  postfix reload
+fi
+# The names nginx answers to (other names and addresses get 404)
+conf_value() { sed -n "s/^$1=//p" "${CONF}" | tail -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"; }
+CRASSOSTREA_HOSTNAME=${name} ADDITIONAL_SAN=$(conf_value ADDITIONAL_SAN) \
+  ONLY_CRASSOSTREA_HOSTNAME=$(conf_value ONLY_CRASSOSTREA_HOSTNAME) WEB_PUBLIC_URL=$(conf_value WEB_PUBLIC_URL) \
+  nginx_update_names
+systemctl try-restart "${UNITS[@]}"
+
+# A certificate for the new name (system/libexec/acme). If the name does not
+# reach this server yet, the daily timer tries again; until then the current
+# certificate stays.
+if systemctl is-enabled --quiet crassostrea-acme.timer 2> /dev/null; then
+  systemctl start --no-block crassostrea-acme.service
+fi

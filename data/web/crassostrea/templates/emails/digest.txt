@@ -1,0 +1,19 @@
+{{ brand.name }} – quarantine digest for {{ address }}
+
+The spam filter held back {{ new_items|length }} new message(s) addressed to you.
+{{ pending_count }} message(s) are currently in your quarantine.
+
+{% for item in new_items -%}
+* {{ item.created_at|datetime }}
+  From:    {{ item.sender or "<>" }}
+  Subject: {{ item.subject or "(no subject)" }}
+  Review:  {{ item_url(item) }}
+
+{% endfor -%}
+Manage your quarantine: {{ manage_url }}
+
+The links are valid for {{ valid_days }} day(s). Do not forward this mail:
+anyone with these links can release or delete your quarantined messages.
+--
+{% if brand.footer %}{{ brand.footer }}
+{% endif %}{{ hostname }}

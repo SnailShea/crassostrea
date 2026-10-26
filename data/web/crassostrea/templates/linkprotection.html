@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check %}
+{% block title %}Link protection{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Link protection</h1>
+    <p>Links in inbound mail are checked when they are clicked, so a site that turns malicious after the message
+      arrived is still blocked.</p>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Domains</h2>
+    <p class="muted">Turned on per domain (Domains → Check links when they are clicked). A message is rewritten
+      only when all its recipients are in such domains.</p>
+    <ul>
+      {% for d in domains %}
+      <li><a href="{{ url_for('domains.edit', domain_id=d.id) }}">{{ d.name }}</a>
+        {% if d.link_protection %}<span class="badge good">on</span>{% else %}<span class="badge">off</span>{% endif %}</li>
+      {% else %}
+      <li class="muted">No domains yet.</li>
+      {% endfor %}
+    </ul>
+    <p class="muted">Links point to <span class="mono">https://{{ hostname }}/l/…</span>. Not rewritten: signed
+      or encrypted mail (S/MIME, PGP), mail from the relay networks, rejected mail, and links to the hosts below.
+      The mail log keeps each message as it arrived.</p>
+  </div>
+
+  <form method="post" action="{{ url_for('linkprotection.save') }}" class="card">
+    {{ form.csrf_token }}
+    <h2>Settings</h2>
+    {{ field(form.link_protection_exempt_hosts, rows=3, class="mono", placeholder="intranet.example.com\nsharepoint.com",
+             help="One per line; their subdomains too. For sites you trust and links that must stay exact.") }}
+    {{ field(form.link_protection_block_domains, rows=3, class="mono", placeholder="badsite.example",
+             help="Blocked when clicked, besides the sites on the Spamhaus DBL, SURBL and URIBL block lists.") }}
+    {{ check(form.link_protection_allow_continue, help="The warning page shows the link. Off: they have to ask you.") }}
+    {{ field(form.link_protection_days, help="Older links show an error page instead.") }}
+    <p><button type="submit" class="btn primary">Save</button></p>
+  </form>
+</div>
+
+<form method="post" action="{{ url_for('linkprotection.check') }}#check" class="card" id="check">
+  {{ check_form.csrf_token }}
+  <h2>Check a link</h2>
+  <div class="inline-form">
+    {{ field(check_form.url, placeholder="https://example.com/login") }}
+    <div class="field"><button type="submit" class="btn">Check</button></div>
+  </div>
+  {% if result %}
+  {% if result.blocked %}<div class="alert danger">{{ result.host }}: blocked. {{ result.reason }}</div>
+  {% else %}<div class="alert success">{{ result.host }}: not listed; a click would open it.</div>{% endif %}
+  {% endif %}
+</form>
+
+<div class="live" data-live data-live-refresh="15">
+{% include "_linkprotection_live.html" %}
+</div>
+{% endblock %}

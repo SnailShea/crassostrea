@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf, reasons %}
+{% block title %}Quarantined message{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ item.subject or "(no subject)" }}</h1>
+    <p><a href="{{ url_for('portal.index') }}">‹ My quarantine</a></p>
+  </div>
+</div>
+
+{% if item.is_virus %}
+<div class="alert danger">This message contains a virus. It cannot be released here; contact your administrator
+  if you are sure it is legitimate.</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Details</h2>
+    <dl class="props">
+      <dt>Received</dt><dd>{{ item.created_at|datetime }}</dd>
+      <dt>From</dt><dd class="mono">{{ item.sender or '<>' }}</dd>
+      <dt>Spam score</dt><dd>{{ '%.1f'|format(item.score) }}</dd>
+      <dt>Status</dt><dd>{% if item.released_at %}released {{ item.released_at|datetime }}{% else %}held{% endif %}</dd>
+    </dl>
+  </div>
+  <div class="card">
+    <h2>Actions</h2>
+    <form method="post" action="{{ url_for('portal.action', item_id=item.id) }}">
+      {{ csrf() }}
+      <div class="actions">
+        {% if not item.is_virus and not item.released_at %}
+        <button type="submit" name="action" value="release" class="btn primary"
+                data-confirm="Deliver this message to your mailbox?">Release to my mailbox</button>
+        {% endif %}
+        <button type="submit" name="action" value="delete" class="btn danger"
+                data-confirm="Delete this message permanently?">Delete</button>
+      </div>
+      {% if item.sender %}
+      <div class="actions">
+        {% if not item.is_virus %}
+        <button type="submit" name="action" value="release_allow" class="btn"
+                data-confirm="Deliver this message and always accept mail from {{ item.sender }}?">Release &amp; allow sender</button>
+        {% endif %}
+        <button type="submit" name="action" value="block_delete" class="btn danger"
+                data-confirm="Block {{ item.sender }} and delete this message?">Block sender &amp; delete</button>
+      </div>
+      <p class="muted">Allow and block put <span class="mono">{{ item.sender }}</span> on your personal allow or
+        block list; you can remove it there again.</p>
+      {% endif %}
+    </form>
+    <p class="muted">Only release messages you trust. Links and attachments in spam can be dangerous.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Why it was held back</h2>
+  {{ reasons(item.symbol_list) }}
+</div>
+
+{% include "quarantine/_content.html" %}
+{% endblock %}

@@ -1,0 +1,146 @@
+/* Swagger UI (4.x) in the colours of the web interface: its fixed colours
+   replaced by the variables of app.css, so the API documentation follows the
+   light and dark theme (and the theme toggle without a reload) and the accent
+   colour of the branding. Loaded after swagger-ui.css by apidocs.html.
+   The colours of the HTTP methods are kept: they are tints that work on both. */
+
+.swagger-wrap { background: var(--surface); color: var(--text); }
+.swagger-wrap .swagger-ui { color: var(--text); }
+
+/* Text that Swagger UI sets to #3b4151 */
+.swagger-wrap .swagger-ui .info .title,
+.swagger-wrap .swagger-ui .info h1, .swagger-wrap .swagger-ui .info h2, .swagger-wrap .swagger-ui .info h3,
+.swagger-wrap .swagger-ui .info h4, .swagger-wrap .swagger-ui .info h5,
+.swagger-wrap .swagger-ui .info li, .swagger-wrap .swagger-ui .info p, .swagger-wrap .swagger-ui .info table,
+.swagger-wrap .swagger-ui .info .base-url,
+.swagger-wrap .swagger-ui .opblock-tag, .swagger-wrap .swagger-ui .opblock-tag small,
+.swagger-wrap .swagger-ui .opblock .opblock-summary-operation-id,
+.swagger-wrap .swagger-ui .opblock .opblock-summary-path,
+.swagger-wrap .swagger-ui .opblock .opblock-summary-path__deprecated,
+.swagger-wrap .swagger-ui .opblock .opblock-summary-description,
+.swagger-wrap .swagger-ui .opblock .opblock-section-header > label,
+.swagger-wrap .swagger-ui .opblock .opblock-section-header h4,
+.swagger-wrap .swagger-ui .opblock-description-wrapper, .swagger-wrap .swagger-ui .opblock-description-wrapper h4,
+.swagger-wrap .swagger-ui .opblock-description-wrapper p,
+.swagger-wrap .swagger-ui .opblock-external-docs-wrapper, .swagger-wrap .swagger-ui .opblock-external-docs-wrapper h4,
+.swagger-wrap .swagger-ui .opblock-external-docs-wrapper p,
+.swagger-wrap .swagger-ui .opblock-title_normal, .swagger-wrap .swagger-ui .opblock-title_normal h4,
+.swagger-wrap .swagger-ui .opblock-title_normal p,
+.swagger-wrap .swagger-ui .tab li, .swagger-wrap .swagger-ui .tab li button.tablinks,
+.swagger-wrap .swagger-ui .responses-inner h4, .swagger-wrap .swagger-ui .responses-inner h5,
+.swagger-wrap .swagger-ui .response-col_status, .swagger-wrap .swagger-ui .response-col_links,
+.swagger-wrap .swagger-ui .parameter__name, .swagger-wrap .swagger-ui .parameter__type,
+.swagger-wrap .swagger-ui .scheme-container .schemes > label, .swagger-wrap .swagger-ui .servers > label,
+.swagger-wrap .swagger-ui .loading-container .loading:after,
+.swagger-wrap .swagger-ui section h3, .swagger-wrap .swagger-ui label, .swagger-wrap .swagger-ui .checkbox p,
+.swagger-wrap .swagger-ui .model, .swagger-wrap .swagger-ui .model-title,
+.swagger-wrap .swagger-ui table.headers td,
+.swagger-wrap .swagger-ui table thead tr td, .swagger-wrap .swagger-ui table thead tr th,
+.swagger-wrap .swagger-ui .dialog-ux .modal-ux-header h3,
+.swagger-wrap .swagger-ui .dialog-ux .modal-ux-content h4, .swagger-wrap .swagger-ui .dialog-ux .modal-ux-content p,
+.swagger-wrap .swagger-ui .scopes h2,
+.swagger-wrap .swagger-ui .errors-wrapper .errors h4, .swagger-wrap .swagger-ui .errors-wrapper hgroup h4,
+.swagger-wrap .swagger-ui .auth-container .errors,
+.swagger-wrap .swagger-ui .markdown, .swagger-wrap .swagger-ui .renderedMarkdown {
+  color: var(--text);
+}
+
+/* Secondary text */
+.swagger-wrap .swagger-ui section.models h4, .swagger-wrap .swagger-ui .prop-format,
+.swagger-wrap .swagger-ui .parameter__in, .swagger-wrap .swagger-ui .parameter__deprecated,
+.swagger-wrap .swagger-ui .model .property.primitive, .swagger-wrap .swagger-ui .errors-wrapper .errors small,
+.swagger-wrap .swagger-ui .response-col_description__inner {
+  color: var(--muted);
+}
+.swagger-wrap .swagger-ui .prop-type { color: var(--info); }
+
+/* Red and green labels in the colours of the theme */
+.swagger-wrap .swagger-ui .parameter__name.required span,
+.swagger-wrap .swagger-ui .parameter__name.required:after,
+.swagger-wrap .swagger-ui .parameter__deprecated,
+.swagger-wrap .swagger-ui table.model tr.property-row .star { color: var(--bad); }
+.swagger-wrap .swagger-ui .response-control-media-type__accept-message { color: var(--good); }
+.swagger-wrap .swagger-ui .response-control-media-type--accept-controller select { border-color: var(--good); }
+
+/* Links and the accent */
+.swagger-wrap .swagger-ui a, .swagger-wrap .swagger-ui .info a { color: var(--accent); }
+.swagger-wrap .swagger-ui a.nostyle { color: inherit; }
+.swagger-wrap .swagger-ui .markdown code, .swagger-wrap .swagger-ui .renderedMarkdown code {
+  background: var(--surface-2);
+  color: var(--accent);
+}
+
+/* Surfaces and borders */
+.swagger-wrap .swagger-ui .scheme-container {
+  background: var(--surface-2);
+  box-shadow: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.swagger-wrap .swagger-ui .opblock .opblock-section-header {
+  background: var(--surface-2);
+  box-shadow: 0 1px 0 var(--border);
+}
+.swagger-wrap .swagger-ui .opblock-tag { border-bottom-color: var(--border); }
+.swagger-wrap .swagger-ui .opblock-tag:hover,
+.swagger-wrap .swagger-ui section.models h4:hover { background: var(--surface-2); }
+.swagger-wrap .swagger-ui section.models,
+.swagger-wrap .swagger-ui section.models.is-open h4 { border-color: var(--border); }
+.swagger-wrap .swagger-ui section.models .model-container { background: var(--surface-2); }
+.swagger-wrap .swagger-ui section.models .model-container:hover { background: var(--accent-soft); }
+.swagger-wrap .swagger-ui table thead tr td, .swagger-wrap .swagger-ui table thead tr th,
+.swagger-wrap .swagger-ui .responses-table td, .swagger-wrap .swagger-ui .parameters-col_description {
+  border-bottom-color: var(--border);
+}
+.swagger-wrap .swagger-ui .auth-container, .swagger-wrap .swagger-ui .dialog-ux .modal-ux-header {
+  border-color: var(--border);
+}
+.swagger-wrap .swagger-ui .dialog-ux .modal-ux {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+.swagger-wrap .swagger-ui .opblock.opblock-deprecated { background: var(--surface-2); border-color: var(--border); }
+
+/* Form controls */
+.swagger-wrap .swagger-ui input[type=email], .swagger-wrap .swagger-ui input[type=file],
+.swagger-wrap .swagger-ui input[type=password], .swagger-wrap .swagger-ui input[type=search],
+.swagger-wrap .swagger-ui input[type=text], .swagger-wrap .swagger-ui textarea {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+/* the curl command and read-only response bodies stay dark, as code blocks */
+.swagger-wrap .swagger-ui textarea.curl, .swagger-wrap .swagger-ui textarea[disabled] {
+  background: #41444e;
+  border: none;
+  color: #fff;
+}
+.swagger-wrap .swagger-ui select {
+  /* the arrow in a grey readable on both themes */
+  background: var(--surface-2) url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'><path fill='%2399a1b0' d='M13.418 7.859a.695.695 0 01.978 0 .68.68 0 010 .969l-3.908 3.83a.697.697 0 01-.979 0l-3.908-3.83a.68.68 0 010-.969.695.695 0 01.978 0L10 11z'/></svg>") right 10px center no-repeat;
+  background-size: 20px;
+  border: 1px solid var(--border);
+  box-shadow: none;
+  color: var(--text);
+}
+.swagger-wrap .swagger-ui input[disabled], .swagger-wrap .swagger-ui select[disabled] {
+  background-color: var(--surface-2);
+  color: var(--muted);
+}
+.swagger-wrap .swagger-ui .checkbox input[type=checkbox] + label > .item {
+  background-color: var(--surface-2);
+  box-shadow: 0 0 0 2px var(--border);
+}
+
+/* Buttons */
+.swagger-wrap .swagger-ui .btn { border-color: var(--border); color: var(--text); }
+.swagger-wrap .swagger-ui .btn.execute {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+/* Icons drawn in black by default */
+.swagger-wrap .swagger-ui svg { fill: currentColor; }
+.swagger-wrap .swagger-ui .model-toggle:after { filter: var(--icon-filter, none); }

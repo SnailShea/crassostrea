@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+{% block title %}{{ mailbox.email }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ mailbox.email }}</h1>
+    <p><a href="{{ url_for('mailboxes.index') }}">‹ Mailbox users</a></p>
+  </div>
+  <div class="actions">
+    <a class="btn" href="{{ url_for('quarantine.index', user=mailbox.email) }}">Quarantine ({{ quarantine_pending }})</a>
+    <form method="post" action="{{ url_for('mailboxes.toggle', user_id=mailbox.id) }}" class="inline">
+      {{ csrf() }}<input type="hidden" name="next" value="edit">
+      <button type="submit" class="btn">{{ "Disable account" if mailbox.active else "Enable account" }}</button>
+    </form>
+    <form method="post" action="{{ url_for('mailboxes.delete', user_id=mailbox.id) }}" class="inline"
+          data-confirm="Delete mailbox user {{ mailbox.email }}?">
+      {{ csrf() }}<button type="submit" class="btn danger">Delete</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <dl class="props">
+    <dt>Status</dt><dd>{% if mailbox.active %}<span class="badge good">active</span>{% else %}<span class="badge bad">disabled</span>{% endif %}</dd>
+    <dt>Domain</dt><dd><a href="{{ url_for('domains.edit', domain_id=mailbox.domain.id) }}">{{ mailbox.domain.name }}</a></dd>
+    <dt>Created</dt><dd>{{ mailbox.created_at|datetime }}</dd>
+    <dt>Last login</dt><dd>{{ mailbox.last_login_at|datetime }}</dd>
+    {% if not mailbox.password_hash.startswith('scrypt:') %}<dt>Password</dt><dd>imported
+      ({{ password_format }}) <span class="muted">– replaced with scrypt at the user's next login</span></dd>{% endif %}
+    {% if mailbox.invited_at %}<dt>Invited</dt><dd>{{ mailbox.invited_at|datetime }}
+      <span class="muted">(created for quarantined mail; no password set yet)</span></dd>{% endif %}
+  </dl>
+  <form method="post" action="{{ url_for('mailboxes.set_password', user_id=mailbox.id) }}" class="inline-form">
+    {{ password_form.csrf_token }}
+    <div class="field">
+      <label for="pw-password">New password</label>
+      <input type="password" id="pw-password" name="pw-password" autocomplete="new-password" minlength="10">
+    </div>
+    <div class="field"><button type="submit" class="btn">Set password</button></div>
+  </form>
+  <form method="post" action="{{ url_for('mailboxes.send_password_link', user_id=mailbox.id) }}" class="inline"
+        data-confirm="Send {{ mailbox.email }} a link to set a new password?">
+    {{ csrf() }}<button type="submit" class="btn" {{ 'disabled' if not mailbox.active }}>Send password link</button>
+    <span class="muted">A mail with a link to choose a password, valid once.</span>
+  </form>
+</div>
+
+<div class="card" id="quarantine">
+  <div class="card-head"><h2>Quarantine</h2>
+    <a href="{{ url_for('quarantine.index', user=mailbox.email) }}">Manage all ({{ quarantine_pending }} not released)</a></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Received</th><th>From</th><th>To</th><th>Subject</th><th class="num">Score</th><th></th></tr></thead>
+    <tbody>
+    {% for item in quarantine_recent %}
+      <tr>
+        <td class="nowrap">{{ item.created_at|datetime }}</td>
+        <td class="truncate">{{ item.sender or '<>' }}</td>
+        <td class="truncate">{{ item.rcpt }}</td>
+        <td class="truncate"><a href="{{ url_for('quarantine.show', item_id=item.id) }}">{{ item.subject or '(no subject)' }}</a></td>
+        <td class="num">{{ '%.1f'|format(item.score) }}</td>
+        <td class="nowrap">{% if item.is_virus %}<span class="badge bad">virus</span>{% endif %}
+          {% if item.released_at %}<span class="badge good">released</span>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="empty">No quarantined mail for this mailbox.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+{% include "_mailbox_settings.html" %}
+{% endblock %}

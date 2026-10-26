@@ -1,0 +1,183 @@
+#!/usr/bin/env bash
+# Obtains and renews the gateway's certificate with acme.sh
+# (crassostrea-acme.service, started daily by crassostrea-acme.timer).
+#
+# One certificate covers CRASSOSTREA_HOSTNAME and ADDITIONAL_SAN. It is
+# installed as /etc/crassostrea/ssl/{cert,key}.pem, used by nginx and Postfix.
+# Challenges: HTTP-01 through nginx (webroot), or DNS-01 with an acme.sh DNS
+# API (ACME_DNS_CHALLENGE=y, credentials in /etc/crassostrea/acme/dns-01.conf).
+#
+#   acme --staging-test NAME...
+#       asks Let's Encrypt's staging environment for a certificate for exactly
+#       these names (Certificates & TLS in the web UI, before the names are
+#       applied): every name must validate. Uses its own acme.sh state, so
+#       the production account and certificate stay as they are, and installs
+#       nothing.
+set -o pipefail
+
+TEST_NAMES=()
+if [[ $1 == --staging-test ]]; then
+  shift
+  TEST_NAMES=("$@")
+  [[ ${#TEST_NAMES[@]} -gt 0 ]] || { echo "--staging-test needs at least one name"; exit 1; }
+fi
+
+CONF=${SF_CONF:-/etc/crassostrea/crassostrea.conf}
+ACME_SH=${ACME_SH:-/usr/local/share/crassostrea/acme.sh/acme.sh}
+ACME_HOME=${ACME_HOME:-/var/lib/crassostrea/acme}
+WEBROOT=${ACME_WEBROOT:-/var/lib/crassostrea/acme-challenge}
+CHALLENGE_DIR=${WEBROOT}/.well-known/acme-challenge
+SSL_DIR=${SSL_DIR:-/etc/crassostrea/ssl}
+DNS_CONFIG=${DNS_CONFIG:-/etc/crassostrea/acme/dns-01.conf}
+
+is_yes() { [[ "${1,,}" =~ ^(y|yes|true|1)$ ]]; }
+log() { echo "$*"; }
+
+# load_env_file FILE: export the KEY=VALUE lines of FILE like systemd's
+# EnvironmentFile= (one pair of surrounding quotes removed, nothing expanded
+# or executed), so scripts and units see the same values
+load_env_file() {
+  local line key value
+  while IFS= read -r line || [[ -n ${line} ]]; do
+    line=${line%$'\r'}
+    [[ ${line} =~ ^[[:space:]]*(#|$) ]] && continue
+    if [[ ${line} =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      key=${BASH_REMATCH[1]}
+      value=${BASH_REMATCH[2]}
+      if [[ ${value} =~ ^\"(.*)\"[[:space:]]*$ || ${value} =~ ^\'(.*)\'[[:space:]]*$ ]]; then
+        value=${BASH_REMATCH[1]}
+      fi
+      export "${key}=${value}"
+    else
+      echo "Ignoring invalid line in $1: ${line%%=*}" >&2
+    fi
+  done < "$1"
+}
+
+[[ -r ${CONF} ]] || { echo "Cannot read ${CONF}"; exit 1; }
+load_env_file "${CONF}"
+
+if [[ ${#TEST_NAMES[@]} -gt 0 ]]; then
+  # A test also runs while the certificate is managed manually
+  ACME_HOME=${ACME_STAGING_HOME:-/var/lib/crassostrea/acme-staging}
+elif is_yes "${SKIP_LETS_ENCRYPT:-n}"; then
+  log "SKIP_LETS_ENCRYPT=y, nothing to do"
+  exit 0
+fi
+
+fail() {
+  log "ERROR: $*"
+  # Read by the watchdog (acme_checks); a staging test is not a renewal
+  [[ ${#TEST_NAMES[@]} -gt 0 ]] && exit 1
+  valkey-cli -h 127.0.0.1 -a "${REDISPASS}" --no-auth-warning SET ACME_FAIL_TIME "$(date +%s)" > /dev/null
+  exit 1
+}
+
+# The name must reach this host's nginx over HTTP (skipped for DNS-01)
+reaches_this_host() {
+  local name=$1 token
+  is_yes "${SKIP_HTTP_VERIFICATION:-n}" && return 0
+  token="check-$(od -An -N8 -tx8 /dev/urandom | tr -d ' ')"
+  echo "${token}" > "${CHALLENGE_DIR}/${token}"
+  local answer
+  answer=$(curl -s -m 10 -L "http://${name}/.well-known/acme-challenge/${token}")
+  rm -f "${CHALLENGE_DIR:?}/${token}"
+  [[ ${answer} == "${token}" ]]
+}
+
+
+[[ -x ${ACME_SH} ]] || fail "acme.sh not found at ${ACME_SH}, run system/install.sh"
+mkdir -p "${CHALLENGE_DIR}" "${ACME_HOME}"
+chmod 0700 "${ACME_HOME}"
+
+dns_challenge=n
+is_yes "${ACME_DNS_CHALLENGE:-n}" && dns_challenge=y
+
+names=("${CRASSOSTREA_HOSTNAME}")
+if [[ ${#TEST_NAMES[@]} -gt 0 ]]; then
+  names=("${TEST_NAMES[@]}")
+  for name in "${names[@]}"; do
+    [[ ${name} == \** && ${dns_challenge} != y ]] && fail "${name}: wildcards need ACME_DNS_CHALLENGE=y"
+  done
+elif ! is_yes "${ONLY_CRASSOSTREA_HOSTNAME:-n}"; then
+  IFS=',' read -r -a extra <<< "${ADDITIONAL_SAN}"
+  for name in "${extra[@]}"; do
+    name=${name// /}
+    [[ -z ${name} || ${name} == "${CRASSOSTREA_HOSTNAME}" ]] && continue
+    if [[ ${name} == \** && ${dns_challenge} != y ]]; then
+      log "Ignoring wildcard ${name}: wildcards need ACME_DNS_CHALLENGE=y"
+      continue
+    fi
+    names+=("${name}")
+  done
+fi
+
+domain_args=()
+for name in "${names[@]}"; do
+  [[ ${name} =~ ^(\*\.)?[A-Za-z0-9.-]+$ ]] || fail "Invalid name ${name}"
+  if [[ ${dns_challenge} != y ]] && ! reaches_this_host "${name}"; then
+    # a test checks every name; the renewal leaves out the extra names that
+    # do not reach the server (yet)
+    if [[ ${#TEST_NAMES[@]} -gt 0 || ${name} == "${CRASSOSTREA_HOSTNAME}" ]]; then
+      fail "http://${name}/ does not reach this server (DNS, firewall, HTTP_PORT?); set SKIP_HTTP_VERIFICATION=y to skip this check"
+    fi
+    log "Skipping ${name}: http://${name}/ does not reach this server"
+    continue
+  fi
+  domain_args+=(-d "${name}")
+done
+
+if [[ ${#TEST_NAMES[@]} -gt 0 ]]; then
+  server=letsencrypt_test
+elif [[ -n ${DIRECTORY_URL} ]]; then
+  server=${DIRECTORY_URL}
+elif is_yes "${LE_STAGING:-n}"; then
+  server=letsencrypt_test
+else
+  server=letsencrypt
+fi
+
+acme=("${ACME_SH}" --home "${ACME_HOME}" --config-home "${ACME_HOME}" --server "${server}" --no-cron)
+if [[ -n ${ACME_ACCOUNT_EMAIL} && ${ACME_ACCOUNT_EMAIL} != "me@example.com" ]]; then
+  "${acme[@]}" --register-account -m "${ACME_ACCOUNT_EMAIL}" > /dev/null || fail "Cannot register the ACME account"
+fi
+
+issue=("${acme[@]}" --issue --keylength 4096 "${domain_args[@]}")
+if [[ ${dns_challenge} == y ]]; then
+  [[ -n ${ACME_DNS_PROVIDER} && ${ACME_DNS_PROVIDER} != dns_xxx ]] || fail "Set ACME_DNS_PROVIDER for the DNS-01 challenge"
+  [[ -f ${DNS_CONFIG} ]] && load_env_file "${DNS_CONFIG}"
+  issue+=(--dns "${ACME_DNS_PROVIDER}")
+else
+  issue+=(--webroot "${WEBROOT}")
+fi
+[[ -f ${ACME_HOME}/force_renew ]] && issue+=(--force)
+# a test always asks for a new certificate
+[[ ${#TEST_NAMES[@]} -gt 0 ]] && issue+=(--force)
+
+"${issue[@]}"
+rc=$?
+if [[ ${#TEST_NAMES[@]} -gt 0 ]]; then
+  if [[ ${rc} == 0 ]]; then
+    log "Staging test passed: Let's Encrypt validated ${names[*]}"
+    exit 0
+  fi
+  fail "Staging test failed (acme.sh exit code ${rc}), see the messages above"
+fi
+rm -f "${ACME_HOME}/force_renew"
+case ${rc} in
+  0) log "Certificate issued for ${names[*]}" ;;
+  2)
+    log "Certificate is not due for renewal"
+    # Install it anyway when the files are missing (e.g. restored system)
+    cmp -s "${SSL_DIR}/cert.pem" "$("${acme[@]}" --info -d "${CRASSOSTREA_HOSTNAME}" 2> /dev/null \
+      | sed -n "s/^Le_RealFullChainPath=//p" | tr -d "'")" 2> /dev/null && exit 0
+    ;;
+  *) fail "acme.sh failed with exit code ${rc}" ;;
+esac
+
+"${acme[@]}" --install-cert -d "${CRASSOSTREA_HOSTNAME}" \
+  --key-file "${SSL_DIR}/key.pem" --fullchain-file "${SSL_DIR}/cert.pem" \
+  --reloadcmd "systemctl reload nginx.service; systemctl restart postfix.service" \
+  || fail "Cannot install the certificate"
+chmod 0600 "${SSL_DIR}/key.pem"
+valkey-cli -h 127.0.0.1 -a "${REDISPASS}" --no-auth-warning SET ACME_FAIL_TIME 0 > /dev/null

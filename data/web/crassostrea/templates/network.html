@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}DNS &amp; ports{% endblock %}
+
+{% macro status(value) -%}
+  {%- set labels = {'ok': 'OK', 'warn': 'Warning', 'error': 'Error', 'info': 'Note'} -%}
+  {%- set classes = {'ok': 'good', 'warn': 'warn', 'error': 'bad', 'info': 'info'} -%}
+  <span class="badge {{ classes[value] }}">{{ labels[value] }}</span>
+{%- endmacro %}
+
+{% macro record_rows(checks) %}
+  {% for c in checks %}
+  <tr>
+    <td>{{ status(c.status) }}</td>
+    <td><span class="mono">{{ c.record }}</span><br><span class="muted">{{ c.type }}</span></td>
+    <td class="mono">{{ c.expected }}</td>
+    <td class="mono">{% for value in c.found %}<div>{{ value }}</div>{% else %}<span class="muted">none</span>{% endfor %}</td>
+    <td>{{ c.message }}</td>
+  </tr>
+  {% endfor %}
+{% endmacro %}
+
+{% macro record_head() %}
+  <thead><tr><th>Status</th><th>Record</th><th>Expected</th><th>Found</th><th>Result</th></tr></thead>
+{% endmacro %}
+
+{% macro port_table(rows) %}
+  <div class="table-wrap">
+  <table class="checks">
+    <thead><tr><th>Status</th><th>Port</th><th>Used for</th><th>Tested</th><th>Result</th></tr></thead>
+    <tbody>
+    {% for p in rows %}
+      <tr>
+        <td>{{ status(p.status) }}</td>
+        <td class="mono nowrap">{{ p.port }}</td>
+        <td>{{ p.purpose }}</td>
+        <td class="mono">{{ p.target }}</td>
+        <td>{{ p.message }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>DNS &amp; ports</h1>
+    <p>The DNS records and connections the gateway needs, checked from this server just now.</p>
+  </div>
+  <div class="actions"><a class="btn" href="{{ url_for('network.index') }}">Check again</a></div>
+</div>
+
+<p class="check-summary">
+  {% if summary.error %}<span class="badge bad">{{ summary.error }} error{{ 's' if summary.error != 1 }}</span>{% endif %}
+  {% if summary.warn %}<span class="badge warn">{{ summary.warn }} warning{{ 's' if summary.warn != 1 }}</span>{% endif %}
+  <span class="badge good">{{ summary.ok }} OK</span>
+  {% if summary.info %}<span class="badge info">{{ summary.info }} note{{ 's' if summary.info != 1 }}</span>{% endif %}
+</p>
+
+<div class="card">
+  <div class="card-head"><h2>Gateway hostname</h2></div>
+  <p class="muted">The MX records of the domains name this host. Receiving servers compare its reverse DNS with
+    the hostname, and Let's Encrypt validates it for the certificate.</p>
+  <div class="table-wrap">
+  <table class="checks">
+    {{ record_head() }}
+    <tbody>{{ record_rows(results.gateway) }}</tbody>
+  </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Domains</h2><a href="{{ url_for('domains.index') }}">Manage</a></div>
+  {% if not results.sends_outbound %}
+  <p class="muted">SPF and DMARC are checked once relay networks are set up (<a href="{{ url_for('settings.networks') }}">Settings → Relay networks</a>): the gateway then sends
+    the domains' outgoing mail.</p>
+  {% endif %}
+  {% if results.domains %}
+  <div class="table-wrap">
+  <table class="checks">
+    {{ record_head() }}
+    {% for name, checks in results.domains %}
+    <tbody>
+      <tr class="group-row"><th colspan="5">{{ name }}</th></tr>
+      {{ record_rows(checks) }}
+    </tbody>
+    {% endfor %}
+  </table>
+  </div>
+  {% else %}
+  <p class="empty">No active domains.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Incoming connections</h2></div>
+  <p class="muted">Tested by connecting from this server, so a firewall in front of it can still block the
+    internet. Test from another network, e.g. <code>nc -vz {{ results.hostname }} 25</code>; a timeout there means
+    a firewall drops the connections.</p>
+  {{ port_table(results.inbound) }}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Outgoing connections</h2></div>
+  {{ port_table(results.outbound) }}
+</div>
+
+{% if results.cluster %}
+<div class="card">
+  <div class="card-head"><h2>Cluster</h2></div>
+  <p class="muted">Connections to the other members. Galera also needs 4568/tcp and 4444/tcp, which only accept
+    connections while a node receives a state transfer, so they are not tested.</p>
+  {{ port_table(results.cluster) }}
+</div>
+{% endif %}
+{% endblock %}

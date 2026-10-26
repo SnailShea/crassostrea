@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: apply the time zone chosen in the web UI
+
+[Path]
+# Written by the web UI's sync (atomic rename) on every node
+PathChanged=/var/lib/crassostrea/web/timezone
+Unit=crassostrea-timezone.service
+
+[Install]
+WantedBy=multi-user.target

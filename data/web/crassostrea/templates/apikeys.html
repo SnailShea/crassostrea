@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field, check, csrf %}
+{% block title %}API keys{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>API keys</h1>
+    <p>Keys for the REST API (administrators and mailbox users). See the
+      <a href="{{ url_for('apidocs.index') }}">API documentation</a>.</p>
+  </div>
+</div>
+
+{% if new_key %}
+<div class="alert success">
+  <strong>API key "{{ new_key.name }}" created.</strong> Copy it now, it will not be shown again:
+  <pre class="message">{{ new_key.token }}</pre>
+  Send it as <code>X-API-Key</code> header.
+</div>
+{% endif %}
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Keys</h2>
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Name</th><th>Key</th><th>Access</th><th>Allowed from</th><th>Last used</th><th></th></tr></thead>
+      <tbody>
+      {% for k in keys %}
+        <tr>
+          <td>{{ k.name }}</td>
+          <td class="mono">{{ k.prefix }}…</td>
+          <td>{% if k.read_only %}<span class="badge">read-only</span>{% else %}<span class="badge warn">read/write</span>{% endif %}</td>
+          <td class="mono">{{ k.allow_from or "any" }}</td>
+          <td class="muted nowrap">{{ k.last_used_at|datetime }}</td>
+          <td class="right">
+            <form method="post" action="{{ url_for('apikeys.delete', key_id=k.id) }}" class="inline"
+                  data-confirm="Revoke API key {{ k.name }}? Clients using it stop working immediately.">
+              {{ csrf() }}<button type="submit" class="link-button danger">Revoke</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="empty">No API keys.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Create key</h2>
+    <form method="post" action="{{ url_for('apikeys.create') }}">
+      {{ form.csrf_token }}
+      {{ field(form.name, placeholder="Provisioning script") }}
+      {{ check(form.read_only) }}
+      {{ field(form.allow_from, placeholder="192.0.2.10, 2001:db8::/64",
+               help="Comma separated. Leave empty to allow any source address (not recommended).") }}
+      <button type="submit" class="btn primary">Create key</button>
+    </form>
+    <p class="muted">A read/write key can create administrators: treat it like an administrator password.</p>
+  </div>
+</div>
+{% endblock %}

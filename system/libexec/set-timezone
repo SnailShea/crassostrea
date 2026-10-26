@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Sets the gateway's time zone as chosen in the web UI (Settings -> time
+# zone): crassostrea-timezone.service, started by crassostrea-timezone.path when
+# the web UI's sync writes the file. Every cluster node runs its own sync, so
+# every node follows. The web UI runs unprivileged: the name is checked again
+# here. The file stays (PathChanged, like the Postfix files of the web UI);
+# the outcome goes to STATUS for the settings page.
+#
+# The services that keep the time zone they started with are restarted when
+# they run (their logs and timestamps). MariaDB and Valkey are not: a Galera
+# node restarting with the others could stop the cluster; they use the new
+# zone after their next restart (the web UI stores times in UTC either way).
+set -o pipefail
+
+REQUEST=${TIMEZONE_REQUEST:-/var/lib/crassostrea/web/timezone}
+STATUS=${TIMEZONE_STATUS:-/var/lib/crassostrea/timezone/status.json}
+ZONEINFO=${ZONEINFO_DIR:-/usr/share/zoneinfo}
+UNITS=(rspamd.service postfix.service clamd@crassostrea.service clamav-freshclam.service crassostrea-olefy.service
+       unbound.service nginx.service crassostrea-postfix-tlspol.service crassostrea-web.service
+       crassostrea-web-internal.service crassostrea-siem.service crassostrea-journal.service crassostrea-logship.service
+       crassostrea-netfilter.service crassostrea-watchdog.service crassostrea-cluster.service
+       crassostrea-cluster-report.service)
+
+# status STATE ZONE MESSAGE: in a directory of root, read by the web UI
+status() {
+  local tmp
+  mkdir -p "$(dirname "${STATUS}")" && chmod 0755 "$(dirname "${STATUS}")"
+  tmp=$(mktemp "${STATUS}.XXXXXX") || return
+  printf '{"state": "%s", "timezone": "%s", "message": "%s", "at": %s}\n' "$1" "$2" "$3" "$(date +%s)" > "${tmp}"
+  chmod 0644 "${tmp}"
+  mv -f "${tmp}" "${STATUS}"
+}
+
+[[ -f ${REQUEST} ]] || exit 0
+zone=$(tr -d '[:space:]' < "${REQUEST}")
+# IANA names: Area/Location[/Sublocation] or UTC; no "..", a file of the
+# zone database, not a directory
+if ! [[ ${#zone} -le 64 && ${zone} =~ ^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+){0,2}$ \
+        && -f ${ZONEINFO}/${zone} ]]; then
+  echo "Refusing the time zone change: '${zone:0:64}' is not a time zone" >&2
+  status failed "" "Not a time zone"
+  exit 1
+fi
+current=$(timedatectl show -p Timezone --value 2> /dev/null)
+if [[ ${zone} == "${current}" ]]; then
+  echo "The time zone already is ${zone}"
+  status ok "${zone}" ""
+  exit 0
+fi
+
+echo "Changing the time zone from ${current:-unknown} to ${zone}"
+if ! timedatectl set-timezone "${zone}"; then
+  status failed "${zone}" "timedatectl could not set the time zone"
+  exit 1
+fi
+status ok "${zone}" ""
+# only the units that run
+systemctl try-restart "${UNITS[@]}" 2> /dev/null
+exit 0

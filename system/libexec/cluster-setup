@@ -1,0 +1,311 @@
+#!/usr/bin/python3 -I
+"""Creates or joins a cluster as requested on the Cluster page of a single
+gateway (like Proxmox's Create/Join cluster): crassostrea-cluster-setup.service,
+started by crassostrea-cluster-setup.path while the request file exists. The
+web UI runs unprivileged and validates the request; it is checked again here.
+
+create  {"address", "vip"}: setup.sh --ha with this gateway as the only node
+        (it keeps its data), as on the command line.
+join    {"address", "host", "port", "fingerprint", "token"} (the decoded join
+        information of a member): POST /cluster/join on the member, over
+        HTTPS to its cluster address, accepted only if its certificate has
+        the fingerprint. The member adds this gateway to the cluster's
+        membership; once it has applied that, it answers with the join bundle
+        (until then 202). After the members' Galera ports let this gateway
+        in, setup.sh --join installs the bundle: the cluster's configuration
+        (this host's own settings are kept, see ha_unbundle), its database
+        and Valkey data replace this gateway's.
+
+The outcome is written to STATUS (JSON with a log, read by the web UI).
+"""
+import base64
+import hashlib
+import http.client
+import ipaddress
+import io
+import json
+import os
+import re
+import socket
+import ssl
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+
+REQUEST = os.environ.get("CLUSTER_SETUP_REQUEST", "/var/lib/crassostrea/web/cluster-setup.json")
+STATUS_DIR = os.environ.get("CLUSTER_SETUP_DIR", "/var/lib/crassostrea/cluster-setup")
+STATUS = STATUS_DIR + "/status.json"
+CONF = os.environ.get("SF_CONF", "/etc/crassostrea/crassostrea.conf")
+SOURCE_FILE = os.environ.get("SF_SOURCE_FILE", "/usr/local/lib/crassostrea/source")
+# How long the member may take to apply the membership and write the bundle
+BUNDLE_WAIT = 900
+POLL_SECONDS = 5
+# How long the members' firewalls may take to let this gateway in
+PEER_WAIT = 300
+GALERA_PORT = 4567
+HOSTNAME_RE = re.compile(r"^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+LOG = []
+ACTION = {"name": ""}
+
+
+def log(message):
+    LOG.append(message)
+    print(message, flush=True)
+
+
+def status_set(state, message):
+    os.makedirs(STATUS_DIR, mode=0o755, exist_ok=True)
+    entry = {"action": ACTION["name"], "state": state, "message": message, "at": int(time.time()),
+             "log": "\n".join(LOG)[-12000:]}
+    fd, tmp = tempfile.mkstemp(dir=STATUS_DIR)
+    with os.fdopen(fd, "w") as handle:
+        json.dump(entry, handle, indent=1)
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, STATUS)
+
+
+class Refused(ValueError):
+    pass
+
+
+def conf_values():
+    values = {}
+    with open(CONF, encoding="utf-8") as handle:
+        for line in handle:
+            key, sep, value = line.strip().partition("=")
+            if sep and re.match(r"^[A-Z_][A-Z0-9_]*$", key):
+                values[key] = value.strip().strip("\"'")
+    return values
+
+
+def own_addresses():
+    result = subprocess.run(["ip", "-o", "-4", "addr", "show"], capture_output=True, text=True, timeout=10)
+    return {line.split()[3].split("/")[0] for line in result.stdout.splitlines() if len(line.split()) > 3}
+
+
+def cluster_address(value):
+    try:
+        address = ipaddress.IPv4Address(str(value))
+    except ValueError:
+        raise Refused(f"{value!r} is not an IPv4 address") from None
+    if address.is_loopback or address.is_unspecified or address.is_multicast or address.is_link_local:
+        raise Refused(f"{address} cannot be a cluster address")
+    return str(address)
+
+
+def source_dir():
+    with open(SOURCE_FILE, encoding="utf-8") as handle:
+        src = handle.readline().strip()
+    if not os.access(os.path.join(src, "setup.sh"), os.X_OK):
+        raise Refused(f"The gateway's checkout ({src}) is gone: run setup.sh there")
+    return src
+
+
+def run_setup(argv):
+    """setup.sh with its output in the log; the status is updated as it runs."""
+    log("$ " + " ".join(argv))
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                               cwd=os.path.dirname(argv[0]), stdin=subprocess.DEVNULL)
+    last = 0
+    for line in process.stdout:
+        # setup.sh colours its messages
+        LOG.append(re.sub(r"\x1b\[[0-9;]*m", "", line.rstrip()))
+        if time.time() - last > 5:
+            status_set("running", "Running setup.sh: " + (LOG[-1][:200] if LOG else ""))
+            last = time.time()
+    return process.wait()
+
+
+# ---------------------------------------------------------------------------
+# Joining
+# ---------------------------------------------------------------------------
+
+class PinnedConnection(http.client.HTTPSConnection):
+    """HTTPS to the member's address with its name as SNI and Host; the
+    certificate is accepted by its fingerprint, not by a CA (it may be the
+    self-signed one, or the name may not resolve here yet)."""
+
+    def __init__(self, address, port, host, fingerprint):
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        super().__init__(address, port, context=context, timeout=30)
+        self.sni, self.fingerprint = host, fingerprint
+
+    def connect(self):
+        sock = socket.create_connection((self.host, self.port), self.timeout)
+        self.sock = self._context.wrap_socket(sock, server_hostname=self.sni)
+        der = self.sock.getpeercert(binary_form=True)
+        if hashlib.sha256(der).hexdigest() != self.fingerprint:
+            self.sock.close()
+            raise Refused("The member's certificate does not match the join information (a new certificate since? "
+                          "Create a new join information)")
+
+
+def post_join(info, hostname, address, connection=PinnedConnection):
+    """(status, body) of one POST /cluster/join."""
+    conn = connection(info["address"], info["port"], info["host"], info["fingerprint"])
+    host_header = info["host"] if info["port"] == 443 else f"{info['host']}:{info['port']}"
+    body = json.dumps({"token": info["token"], "hostname": hostname, "address": address})
+    try:
+        conn.request("POST", "/cluster/join", body=body,
+                     headers={"Host": host_header, "Content-Type": "application/json"})
+        response = conn.getresponse()
+        raw = response.read(64 * 1024 * 1024)
+    finally:
+        conn.close()
+    try:
+        data = json.loads(raw or b"{}")
+    except ValueError:
+        data = {}
+    return response.status, data if isinstance(data, dict) else {}
+
+
+def fetch_bundle(info, hostname, address, post=post_join, sleep=time.sleep, wait=BUNDLE_WAIT):
+    deadline = time.time() + wait
+    first = True
+    while True:
+        try:
+            status, data = post(info, hostname, address)
+        except (OSError, http.client.HTTPException) as exc:
+            if time.time() > deadline:
+                raise Refused(f"{info['host']} ({info['address']}:{info['port']}) does not answer: {exc}") from None
+            log(f"{info['host']} does not answer yet: {exc}")
+            sleep(POLL_SECONDS)
+            continue
+        if status == 200 and data.get("bundle"):
+            return base64.b64decode(data["bundle"])
+        if status != 202:
+            raise Refused(f"{info['host']} refused: {data.get('error') or status}")
+        if first:
+            log(f"{info['host']} added {hostname} to the cluster and prepares its join bundle")
+            status_set("running", f"{info['host']} added this gateway to the cluster; waiting for the members")
+            first = False
+        if time.time() > deadline:
+            raise Refused(f"{info['host']} did not hand out the join bundle within {wait // 60} minutes")
+        sleep(POLL_SECONDS)
+
+
+def bundle_members(bundle):
+    """The full nodes (hostname, address) of the bundle's configuration."""
+    with tarfile.open(fileobj=io.BytesIO(bundle)) as tar:
+        names = tar.getnames()
+        if "crassostrea.conf" not in names or any(n not in ("crassostrea.conf", "pki", "pki/ca.crt", "pki/ca.key",
+                                                           "pki/node.crt", "pki/node.key") for n in names):
+            raise Refused("The member's answer is not a join bundle")
+        text = tar.extractfile("crassostrea.conf").read().decode("utf-8", "replace")
+    nodes = ""
+    for line in text.splitlines():
+        if line.startswith("HA_NODES="):
+            nodes = line.split("=", 1)[1].strip().strip("\"'")
+    return [tuple(e.split("=", 1)) for e in nodes.split(",") if "=" in e]
+
+
+def wait_for_peers(members, address, wait=PEER_WAIT):
+    """Until the other nodes' Galera ports let this gateway in."""
+    peers = [a for _, a in members if a != address]
+    deadline = time.time() + wait
+    while True:
+        open_ = []
+        for peer in peers:
+            try:
+                with socket.create_connection((peer, GALERA_PORT), timeout=3):
+                    open_.append(peer)
+            except OSError:
+                pass
+        if len(open_) == len(peers) or time.time() > deadline:
+            missing = sorted(set(peers) - set(open_))
+            if missing:
+                log(f"Not reachable on port {GALERA_PORT} yet: {', '.join(missing)}")
+            if not open_ and peers:
+                raise Refused(f"No member lets this gateway in on port {GALERA_PORT} (firewall?)")
+            return
+        time.sleep(5)
+
+
+def validate_join(request):
+    host, port = str(request.get("host", "")).lower(), request.get("port")
+    if not HOSTNAME_RE.match(host) or not isinstance(port, int) or not 1 <= port <= 65535:
+        raise Refused("Invalid join information")
+    fingerprint, token = str(request.get("fingerprint", "")), str(request.get("token", ""))
+    if not re.fullmatch(r"[0-9a-f]{64}", fingerprint) or not re.fullmatch(r"[A-Za-z0-9_-]{20,100}", token):
+        raise Refused("Invalid join information")
+    return {"host": host, "port": port, "fingerprint": fingerprint, "token": token,
+            "address": cluster_address(request.get("member_address"))}
+
+
+# ---------------------------------------------------------------------------
+
+def main():
+    if not os.path.exists(REQUEST):
+        return 0
+    with open(REQUEST, encoding="utf-8") as handle:
+        text = handle.read(64 * 1024)
+    # consumed even if it is refused, so the path unit does not start this again
+    os.unlink(REQUEST)
+    try:
+        request = json.loads(text)
+        if not isinstance(request, dict) or request.get("action") not in ("create", "join"):
+            raise Refused("Invalid request")
+        ACTION["name"] = request["action"]
+        conf = conf_values()
+        if conf.get("HA_NODES", "").strip():
+            raise Refused("This gateway already is a cluster member")
+        hostname = conf.get("CRASSOSTREA_HOSTNAME", "").lower()
+        address = cluster_address(request.get("address"))
+        if address not in own_addresses():
+            raise Refused(f"{address} is not an address of this server")
+        src = source_dir()
+    except (Refused, ValueError, OSError) as exc:
+        status_set("failed", f"Nothing was changed: {exc}")
+        return 1
+
+    if request["action"] == "create":
+        vip = str(request.get("vip") or "")
+        if vip and not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}/\d{1,2}", vip):
+            status_set("failed", "Nothing was changed: invalid floating address")
+            return 1
+        status_set("running", f"Creating the cluster with {hostname} ({address})")
+        code = run_setup([os.path.join(src, "setup.sh"), "--ha", "--ha-nodes", f"{hostname}={address}",
+                          "--ha-witness", "none", "--ha-vip", vip or "none", "--yes"])
+        if code != 0:
+            status_set("failed", f"setup.sh failed (exit {code}); see the log. It can be run again.")
+            return 1
+        status_set("ok", f"The cluster was created with {hostname} as its first node. Add nodes with a join "
+                         "information from this page.")
+        return 0
+
+    try:
+        info = validate_join(request)
+        status_set("running", f"Asking {info['host']} ({info['address']}) to let {hostname} join")
+        bundle = fetch_bundle(info, hostname, address)
+        members = bundle_members(bundle)
+        if (hostname, address) not in members:
+            raise Refused("The join bundle is not for this gateway")
+        path = os.path.join(STATUS_DIR, "join.tar")
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(bundle)
+        status_set("running", "Waiting until the members let this gateway in")
+        wait_for_peers(members, address)
+    except (Refused, OSError, ValueError, tarfile.TarError) as exc:
+        status_set("failed", f"Nothing was changed: {exc}")
+        return 1
+    status_set("running", f"Joining the cluster of {info['host']}: installing the cluster components and copying "
+                          "the database")
+    code = run_setup([os.path.join(src, "setup.sh"), "--join", path, "--yes"])
+    os.unlink(path)
+    if code != 0:
+        status_set("failed", f"setup.sh --join failed (exit {code}); see the log. The members already list this "
+                             "gateway: run the join again on the server (system/cluster.sh bundle on a member, "
+                             "then setup.sh --join here), or remove it on a member's Cluster page.")
+        return 1
+    status_set("ok", f"{hostname} joined the cluster of {info['host']}. Log in with an account of the cluster.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

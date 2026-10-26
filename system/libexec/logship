@@ -1,0 +1,102 @@
+#!/usr/local/lib/crassostrea/venv/bin/python -I
+"""Ships the mail log from journald to valkey (crassostrea-logship.service).
+
+Replaces syslog-ng of the former Postfix containers:
+  * every mail log line is pushed to the list POSTFIX_MAILLOG (web UI "Logs"),
+    trimmed to LOG_LINES entries
+  * Postfix lines are published on F2B_CHANNEL, where netfilter matches them
+    against its ban rules (F2B_REGEX)
+
+In a cluster every node ships to the shared valkey; entries carry the node's
+name ("host").
+
+Follows ``journalctl`` with a cursor file in the state directory, so lines
+logged while the shipper was down are shipped after a restart.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+
+import redis
+
+PRIORITIES = ["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug"]
+# Lines the old syslog-ng configuration dropped
+IGNORE = re.compile(r"overriding earlier entry|TLS SNI from checks\.mailcow\.email|no SASL support")
+# syslog-ng's $(sanitize): control characters and "/" become "_"
+UNSAFE = re.compile(r"[\x00-\x1f\x7f/]")
+TLSPOL_UNIT = "crassostrea-postfix-tlspol.service"
+TRIM_EVERY = 100
+
+
+def text(value):
+    """journald fields are strings, or byte arrays for non-UTF-8 data."""
+    if isinstance(value, list):
+        return bytes(value).decode("utf-8", "replace")
+    return value if isinstance(value, str) else ""
+
+
+def record(entry, host=""):
+    """(log list entry or None, publish to F2B_CHANNEL) for a journal entry."""
+    message = text(entry.get("MESSAGE"))
+    if not message or IGNORE.search(message):
+        return None, False
+    try:
+        priority = PRIORITIES[int(entry.get("PRIORITY", 6))]
+    except (ValueError, IndexError):
+        priority = "info"
+    try:
+        timestamp = str(int(entry.get("__REALTIME_TIMESTAMP", "0")) // 1000000)
+    except ValueError:
+        timestamp = "0"
+    item = {"time": timestamp, "priority": priority, "program": text(entry.get("SYSLOG_IDENTIFIER")),
+            "message": message}
+    if host:
+        item["host"] = host
+    is_tlspol = entry.get("_SYSTEMD_UNIT") == TLSPOL_UNIT
+    return json.dumps(item, ensure_ascii=False), not is_tlspol
+
+
+def journal_command(state_dir):
+    cursor = os.path.join(state_dir, "cursor")
+    command = ["journalctl", "--follow", "--output=json", "--cursor-file=" + cursor]
+    if not os.path.exists(cursor):
+        # first start: from the end of the journal. Not --since=now, which
+        # journalctl (systemd >= 257) refuses together with --cursor-file
+        command.append("--lines=0")
+    # mail facility (2) or the postfix-tlspol service
+    return command + ["SYSLOG_FACILITY=2", "+", "_SYSTEMD_UNIT=" + TLSPOL_UNIT]
+
+
+def main():
+    state_dir = os.environ.get("STATE_DIRECTORY", "/var/lib/crassostrea-logship")
+    max_lines = max(int(os.environ.get("LOG_LINES", "9999")), 1)
+    host = os.environ.get("CRASSOSTREA_HOSTNAME", "") if os.environ.get("HA_NODES", "").strip() else ""
+    client = redis.Redis(host=os.environ.get("REDIS_HOST", "127.0.0.1"),
+                         port=int(os.environ.get("REDIS_PORT_INTERNAL", "6379")),
+                         password=os.environ.get("REDISPASS") or None, socket_timeout=10)
+    client.ping()
+    journal = subprocess.Popen(journal_command(state_dir), stdout=subprocess.PIPE, text=True)
+    pushed = 0
+    for line in journal.stdout:
+        try:
+            entry = json.loads(line)
+        except ValueError:
+            continue
+        item, publish = record(entry, host)
+        if item is None:
+            continue
+        pipe = client.pipeline(transaction=False)
+        pipe.lpush("POSTFIX_MAILLOG", item)
+        if publish:
+            pipe.publish("F2B_CHANNEL", UNSAFE.sub("_", text(entry.get("MESSAGE"))))
+        pushed += 1
+        if pushed % TRIM_EVERY == 0:
+            pipe.ltrim("POSTFIX_MAILLOG", 0, max_lines - 1)
+        pipe.execute()
+    return journal.wait()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

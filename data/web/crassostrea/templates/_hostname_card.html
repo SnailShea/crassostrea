@@ -1,0 +1,22 @@
+{% from "_macros.html" import field %}
+<form method="post" action="{{ url_for('settings.change_hostname') }}" class="card" id="hostname">
+  {{ hostname_form.csrf_token }}
+  <div class="card-head"><h2>Gateway hostname</h2><span class="mono">{{ hostname }}</span></div>
+  {% if in_cluster %}
+  <p class="muted">In a cluster the hostname identifies this member to the others and cannot be changed here. To
+    rename a member, replace it: <code>system/cluster.sh leave</code>, <code>members</code> and <code>bundle</code>,
+    then <code>setup.sh --join</code>.</p>
+  {% else %}
+  <p class="muted">The name the MX records of the domains point to. Postfix greets with it, the certificate is
+    issued for it and quarantine digests link to it. Its A/AAAA and PTR records should point to this server
+    (<a href="{{ url_for('network.index') }}">DNS &amp; ports</a> checks them).</p>
+  {% if hostname_pending %}
+  <div class="alert info">Switching to <span class="mono">{{ hostname_pending }}</span>…</div>
+  {% endif %}
+  <div class="form-row">
+    {{ field(hostname_form.hostname, placeholder="mx.example.com", autocomplete="off") }}
+  </div>
+  <p><button type="submit" class="btn" data-confirm="Change the gateway's hostname? The web UI restarts.">Change hostname</button></p>
+  {% endif %}
+</form>
+

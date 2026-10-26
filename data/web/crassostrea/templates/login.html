@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_macros.html" import field %}
+{% from "_macros.html" import theme_toggle with context %}
+{% block title %}Log in{% endblock %}
+{% block public %}
+{{ theme_toggle("corner-toggle") }}
+<div class="login-wrap">
+  <div class="card login-card">
+    {% if brand.has_logo %}<img class="login-logo" src="{{ url_for('branding.logo', v=brand.version) }}" alt="{{ brand.name }}">{% endif %}
+    <h1>{{ brand.name }}</h1>
+    <p class="muted">{{ hostname }}</p>
+    {% include "_flashes.html" %}
+    <form method="post">
+      {{ form.csrf_token }}
+      {{ field(form.username, autocomplete="username", autofocus=true) }}
+      {{ field(form.password, autocomplete="current-password") }}
+      <button type="submit" class="btn primary">Log in</button>
+    </form>
+    <p class="muted"><a href="{{ url_for('auth.forgot_password') }}">Forgot your password?</a></p>
+    {% if brand.footer %}<p class="brand-footer">{{ brand.footer }}</p>{% endif %}
+  </div>
+</div>
+{% endblock %}

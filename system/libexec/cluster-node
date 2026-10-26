@@ -1,0 +1,399 @@
+#!/usr/bin/env bash
+# Cluster node service: crassostrea-cluster.service, as root, on every full
+# node of a cluster.
+#
+# Every INTERVAL seconds it probes what needs root and the cluster
+# certificate and writes PROBE, which flask cluster-report adds to this
+# node's report (Cluster page, services/cluster.py):
+#   valkey       this node's Valkey: role, replication link, offset, priority
+#   sentinel     this node's Sentinel: the master, whether a majority of the
+#                Sentinels is reachable, whether the witness's Sentinel answers
+#   vip          whether HA_VIP is on this node
+#   maintenance, last_action, promote
+#
+# It applies REQUEST, written by cluster-report from the cluster_control and
+# cluster_membership tables (the Cluster page, the API, system/cluster.sh
+# maintenance). Lines:
+#   maintenance=on|off
+#   promote=TOKEN         make this node the Valkey master
+#   members=H=A,...       the cluster's full nodes, and
+#   witness=H=A           its witness (may be empty): written to crassostrea.conf
+#                         (HA_NODES, HA_WITNESS), then configure.sh --no-restart
+#                         (firewall, Galera, haproxy, Sentinel, keepalived),
+#                         haproxy, keepalived and nginx reloaded, Sentinel's quorum set;
+#                         the service restarts itself to read the new members
+#
+# BUNDLE_REQUEST (members=, witness=, host=), written by the web UI when a
+# gateway joins with a join information: the membership is applied as above,
+# then the join bundle of host is written to BUNDLE_DIR for the web UI to
+# hand out (system/cluster.sh bundle).
+#
+# Maintenance: Postfix answers new connections with 421 (MAINT_CIDR, in
+# smtpd_client_restrictions of main.cf), so senders use the other MX hosts;
+# Valkey never becomes the master here (replica-priority 0, kept by
+# valkey-role across restarts) and hands the master role over if it has it;
+# the keepalived health check fails, so the floating address moves. The
+# queue is still delivered. MAINTENANCE (a file) is the state: every round
+# makes sure it is in effect.
+#
+# Environment: crassostrea.conf (CRASSOSTREA_HOSTNAME, HA_NODES, HA_WITNESS,
+# HA_VIP, REDISPASS).
+set -o pipefail
+
+REQUEST=${CLUSTER_REQUEST:-/var/lib/crassostrea/web/cluster-request}
+BUNDLE_REQUEST=${CLUSTER_BUNDLE_REQUEST:-/var/lib/crassostrea/web/cluster-bundle}
+BUNDLE_DIR=${CLUSTER_BUNDLE_DIR:-/var/lib/crassostrea/cluster-bundles}
+CONF=${SF_CONF:-/etc/crassostrea/crassostrea.conf}
+# The checkout the gateway was deployed from (system/configure.sh)
+SOURCE_FILE=${SF_SOURCE_FILE:-/usr/local/lib/crassostrea/source}
+STATE_DIR=${CLUSTER_STATE_DIR:-/var/lib/crassostrea/cluster}
+PROBE=${STATE_DIR}/probe.json
+MAINTENANCE=${STATE_DIR}/maintenance
+MAINT_CIDR=${CLUSTER_MAINT_CIDR:-/var/lib/crassostrea/postfix/maintenance.cidr}
+PKI=${SF_PKI:-/etc/pki/crassostrea}
+INTERVAL=${CLUSTER_PROBE_INTERVAL:-10}
+VALKEY_PORT=6380
+SENTINEL_PORT=26379
+MASTER_NAME=crassostrea
+DEFAULT_PRIORITY=100
+# Sentinel reads the replicas' priorities every 10 seconds
+SENTINEL_REFRESH=${CLUSTER_SENTINEL_REFRESH:-11}
+
+self=""
+witness=""
+for entry in ${HA_NODES//,/ }; do
+  name=${entry%%=*}
+  [[ ${name,,} == "${CRASSOSTREA_HOSTNAME,,}" ]] && self=${entry#*=}
+done
+[[ -n ${HA_WITNESS//[[:space:]]/} ]] && witness=${HA_WITNESS#*=} && witness=${witness//[[:space:]]/}
+if [[ -z ${self} ]]; then
+  echo "${CRASSOSTREA_HOSTNAME} is not a node in HA_NODES" >&2
+  exit 1
+fi
+
+# valkey-cli to this node's Valkey or Sentinel: vcli PORT [--host HOST] ARGS...
+vcli() {
+  local port=$1 host=${self}
+  shift
+  if [[ $1 == --host ]]; then
+    host=$2
+    shift 2
+  fi
+  timeout 5 valkey-cli --tls --cacert "${PKI}/ca.crt" --cert "${PKI}/node.crt" --key "${PKI}/node.key" \
+    -h "${host}" -p "${port}" -a "${REDISPASS}" --no-auth-warning --raw "$@" 2> /dev/null | tr -d '\r'
+}
+
+action_at=0 action_ok=true action_message=""
+promote_token="" promote_at=0 promote_ok=false promote_message=""
+last_failover=0
+promoting=n
+
+record() {
+  action_ok=$1
+  action_message=$2
+  action_at=$(date +%s)
+  echo "$2"
+}
+
+# ---------------------------------------------------------------------------
+# Maintenance
+# ---------------------------------------------------------------------------
+maintenance_cidr() {
+  echo "# Written by system/libexec/cluster-node - do not edit"
+  [[ -e ${MAINTENANCE} ]] || return 0
+  echo "# Maintenance (Cluster page): new mail goes to the other MX hosts"
+  echo "127.0.0.0/8 DUNNO"
+  echo "::1/128 DUNNO"
+  echo "0.0.0.0/0 421 4.3.2 Maintenance: this server accepts no mail now, please try another MX host"
+  echo "::/0 421 4.3.2 Maintenance: this server accepts no mail now, please try another MX host"
+}
+
+enforce_postfix() {
+  local wanted
+  wanted=$(maintenance_cidr)
+  [[ -f ${MAINT_CIDR} && $(cat "${MAINT_CIDR}") == "${wanted}" ]] && return 0
+  printf '%s\n' "${wanted}" > "${MAINT_CIDR}.tmp" && chmod 0644 "${MAINT_CIDR}.tmp" \
+    && mv -f "${MAINT_CIDR}.tmp" "${MAINT_CIDR}" || { record false "Cannot write ${MAINT_CIDR}"; return 1; }
+  command -v restorecon > /dev/null && restorecon "${MAINT_CIDR}" > /dev/null 2>&1
+  if systemctl is-active --quiet postfix.service; then
+    postfix reload 2> /dev/null || record false "Postfix could not be reloaded"
+  fi
+}
+
+# Valkey: priority 0 in maintenance, and the master role handed over
+enforce_valkey() {
+  local wanted=${DEFAULT_PRIORITY} answer now
+  [[ ${promoting} == y || -z ${v_role} ]] && return 0
+  [[ -e ${MAINTENANCE} ]] && wanted=0
+  if [[ -n ${v_priority} && ${v_priority} != "${wanted}" ]]; then
+    vcli "${VALKEY_PORT}" CONFIG SET replica-priority "${wanted}" > /dev/null && v_priority=${wanted}
+  fi
+  now=$(date +%s)
+  if [[ -e ${MAINTENANCE} && ${v_role} == master ]] && (( now - last_failover >= 60 )); then
+    last_failover=${now}
+    answer=$(vcli "${SENTINEL_PORT}" SENTINEL FAILOVER "${MASTER_NAME}" | head -1)
+    if [[ ${answer} == OK ]]; then
+      record true "Maintenance: handing the Valkey master over to another node"
+    else
+      record false "Maintenance: Sentinel cannot hand the Valkey master over (${answer:-no answer})"
+    fi
+  fi
+}
+
+set_maintenance() {
+  if [[ $1 == on ]]; then
+    [[ -e ${MAINTENANCE} ]] || date +%s > "${MAINTENANCE}"
+    last_failover=0
+    enforce_postfix && record true "Maintenance on: new mail goes to the other nodes"
+  else
+    rm -f "${MAINTENANCE}"
+    enforce_postfix && record true "Maintenance off: accepting mail again"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Making this node the Valkey master
+# ---------------------------------------------------------------------------
+valkey_role() {
+  vcli "${VALKEY_PORT}" INFO replication | sed -n 's/^role://p'
+}
+
+promote() {
+  local answer role i
+  promote_token=$1
+  promote_at=$(date +%s)
+  promote_ok=false
+  if [[ -e ${MAINTENANCE} ]]; then
+    promote_message="In maintenance: not made the Valkey master"
+  elif [[ $(valkey_role) == master ]]; then
+    promote_ok=true
+    promote_message="Already the Valkey master"
+  else
+    promoting=y
+    echo "Making this node the Valkey master"
+    # the lowest priority wins; Sentinel has to see it first
+    vcli "${VALKEY_PORT}" CONFIG SET replica-priority 1 > /dev/null
+    sleep "${SENTINEL_REFRESH}"
+    answer=$(vcli "${SENTINEL_PORT}" SENTINEL FAILOVER "${MASTER_NAME}" | head -1)
+    if [[ ${answer} == OK ]]; then
+      for (( i = 0; i < 30; i++ )); do
+        sleep 1
+        role=$(valkey_role)
+        [[ ${role} == master ]] && break
+      done
+    fi
+    vcli "${VALKEY_PORT}" CONFIG SET replica-priority "${DEFAULT_PRIORITY}" > /dev/null
+    promoting=n
+    if [[ ${role} == master ]]; then
+      promote_ok=true
+      promote_message="Now the Valkey master"
+    elif [[ ${answer} == OK ]]; then
+      promote_message="Sentinel did not make this node the master within 30 seconds"
+    else
+      promote_message="Sentinel refused the failover (${answer:-no answer})"
+    fi
+  fi
+  record "${promote_ok}" "${promote_message}"
+}
+
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Membership
+# ---------------------------------------------------------------------------
+restart_self=n
+
+conf_value() {
+  sed -n "s/^$1=//p" "${CONF}" | tail -1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'$/\1/"
+}
+
+conf_write() {
+  local key=$1 value=$2 tmp
+  tmp=$(mktemp "${CONF}.XXXXXX") || return 1
+  if grep -q "^${key}=" "${CONF}"; then
+    awk -v k="${key}" -v v="${value}" 'index($0, k "=") == 1 {print k "=" v; next} {print}' "${CONF}" > "${tmp}"
+  else
+    { cat "${CONF}"; echo "${key}=${value}"; } > "${tmp}"
+  fi
+  chmod --reference="${CONF}" "${tmp}" && chown --reference="${CONF}" "${tmp}" && mv -f "${tmp}" "${CONF}"
+}
+
+# hostname=IPv4 pairs, comma separated (the witness: one or none)
+valid_members() {
+  local entry
+  for entry in ${1//,/ }; do
+    [[ ${entry} =~ ^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?=[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || return 1
+  done
+}
+
+source_dir() {
+  local dir
+  dir=$(head -1 "${SOURCE_FILE}" 2> /dev/null)
+  [[ -x ${dir}/system/configure.sh ]] && echo "${dir}"
+}
+
+# apply_members NODES WITNESS: this member's configuration and services
+apply_members() {
+  local nodes=$1 witness=$2 src voters quorum
+  if [[ -z ${nodes} ]] || ! valid_members "${nodes}" || ! valid_members "${witness}" \
+      || [[ ${witness} == *,* ]]; then
+    record false "Refused an invalid membership"
+    return 1
+  fi
+  [[ ${nodes} == "$(conf_value HA_NODES)" && ${witness} == "$(conf_value HA_WITNESS)" ]] && return 0
+  if [[ ",${nodes}," != *",${CRASSOSTREA_HOSTNAME,,}=${self},"* ]]; then
+    record false "This node is no longer in the cluster's membership: reinstall it to use it again"
+    return 1
+  fi
+  src=$(source_dir) || { record false "Cannot apply the membership: the checkout in ${SOURCE_FILE} is gone"; return 1; }
+  # the rules of system/lib/cluster.sh (names, addresses, VIP)
+  if ! (source "${src}/system/lib/common.sh" && HA_NODES=${nodes} HA_WITNESS=${witness} ha_parse) > /dev/null 2>&1
+  then
+    record false "Refused the membership ${nodes}: system/lib/cluster.sh does not accept it"
+    return 1
+  fi
+  echo "Applying the membership: ${nodes}${witness:+, witness ${witness}}"
+  conf_write HA_NODES "${nodes}" && conf_write HA_WITNESS "${witness}" \
+    || { record false "Cannot write ${CONF}"; return 1; }
+  if ! "${src}/system/configure.sh" --no-restart; then
+    record false "configure.sh failed while applying the membership, see journalctl -u crassostrea-cluster"
+    return 1
+  fi
+  systemctl try-reload-or-restart haproxy.service
+  systemctl is-active --quiet keepalived.service && systemctl reload keepalived.service
+  # the other nodes for ACME challenges (only rendered with other nodes)
+  if systemctl is-active --quiet nginx.service; then
+    if nginx -t > /dev/null 2>&1; then
+      systemctl reload nginx.service
+    else
+      record false "nginx refuses its configuration after the membership change: nginx -t"
+    fi
+  fi
+  voters=$(( $(tr ',' '\n' <<< "${nodes}" | grep -c .) + (${#witness} > 0 ? 1 : 0) ))
+  quorum=$(( voters / 2 + 1 ))
+  vcli "${SENTINEL_PORT}" SENTINEL SET "${MASTER_NAME}" quorum "${quorum}" > /dev/null
+  record true "Membership applied: $(tr ',' '\n' <<< "${nodes}" | grep -c .) node(s)${witness:+ and a witness}"
+  restart_self=y
+}
+
+# A gateway joins: the membership, then its bundle for the web UI
+apply_bundle_request() {
+  local content line key value nodes="" witness="" host="" src out
+  [[ -f ${BUNDLE_REQUEST} && ! -L ${BUNDLE_REQUEST} ]] || { rm -f "${BUNDLE_REQUEST}"; return 0; }
+  content=$(head -c 16384 "${BUNDLE_REQUEST}")
+  rm -f "${BUNDLE_REQUEST}"
+  while IFS= read -r line; do
+    key=${line%%=*}
+    value=${line#*=}
+    case "${key}" in
+      members) nodes=${value} ;;
+      witness) witness=${value} ;;
+      host) [[ ${value} =~ ^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$ ]] && host=${value} ;;
+    esac
+  done <<< "${content}"
+  if [[ -z ${host} || ",${nodes}," != *",${host}="* ]]; then
+    record false "Refused a join bundle request: the host is not in the membership"
+    return 1
+  fi
+  apply_members "${nodes}" "${witness}" || return 1
+  src=$(source_dir) || return 1
+  out=${BUNDLE_DIR}/${host}.tar
+  mkdir -p "${BUNDLE_DIR}"
+  if "${src}/system/cluster.sh" bundle "${host}" "${out}.tmp" > /dev/null; then
+    chgrp crassostrea "${out}.tmp" 2> /dev/null
+    chmod 0640 "${out}.tmp" && mv -f "${out}.tmp" "${out}"
+    record true "Join bundle for ${host} handed to the web UI"
+  else
+    rm -f "${out}.tmp"
+    record false "Cannot create the join bundle of ${host}"
+  fi
+}
+
+apply_request() {
+  local content line key value maintenance="" token="" members="" witness_members="" has_members=n
+  [[ -f ${REQUEST} && ! -L ${REQUEST} ]] || { rm -f "${REQUEST}"; return 0; }
+  content=$(head -c 16384 "${REQUEST}")
+  # consumed even if it is refused, so it is not applied again
+  rm -f "${REQUEST}"
+  while IFS= read -r line; do
+    key=${line%%=*}
+    value=${line#*=}
+    case "${key}" in
+      maintenance) [[ ${value} == on || ${value} == off ]] && maintenance=${value} ;;
+      promote) [[ ${value} =~ ^[0-9a-f]{8,32}$ ]] && token=${value} ;;
+      members) members=${value} has_members=y ;;
+      witness) witness_members=${value} ;;
+    esac
+  done <<< "${content}"
+  [[ -n ${maintenance} ]] && set_maintenance "${maintenance}"
+  [[ -n ${token} ]] && promote "${token}"
+  [[ ${has_members} == y ]] && apply_members "${members}" "${witness_members}"
+}
+
+probe() {
+  local info offset ck quorum=false witness_ok=null vip=null maint=false since=0
+  info=$(vcli "${VALKEY_PORT}" INFO replication)
+  v_role=$(sed -n 's/^role://p' <<< "${info}")
+  v_link=$(sed -n 's/^master_link_status://p' <<< "${info}")
+  v_master=$(sed -n 's/^master_host://p' <<< "${info}")
+  if [[ ${v_role} == master ]]; then
+    offset=$(sed -n 's/^master_repl_offset://p' <<< "${info}")
+  else
+    offset=$(sed -n 's/^slave_repl_offset://p' <<< "${info}")
+  fi
+  offset=${offset//[^0-9]/}
+  v_priority=$(vcli "${VALKEY_PORT}" CONFIG GET replica-priority | sed -n 2p)
+  v_priority=${v_priority//[^0-9]/}
+  s_master=$(vcli "${SENTINEL_PORT}" SENTINEL get-master-addr-by-name "${MASTER_NAME}" | head -1)
+  ck=$(vcli "${SENTINEL_PORT}" SENTINEL ckquorum "${MASTER_NAME}" | head -1)
+  [[ ${ck} == OK* ]] && quorum=true
+  if [[ -n ${witness} ]]; then
+    [[ $(vcli "${SENTINEL_PORT}" --host "${witness}" PING) == PONG ]] && witness_ok=true || witness_ok=false
+  fi
+  if [[ -n ${HA_VIP} ]]; then
+    ip -o addr show | grep -qF " ${HA_VIP%/*}/" && vip=true || vip=false
+  fi
+  if [[ -e ${MAINTENANCE} ]]; then
+    maint=true
+    since=$(tr -cd '0-9' < "${MAINTENANCE}")
+  fi
+
+  enforce_postfix
+  enforce_valkey
+
+  jq -n --argjson at "$(date +%s)" --argjson maintenance "${maint}" --argjson since "${since:-0}" \
+    --arg role "${v_role}" --arg link "${v_link}" --arg master "${v_master}" \
+    --argjson offset "${offset:-0}" --argjson priority "${v_priority:-null}" \
+    --arg s_master "${s_master}" --argjson quorum "${quorum}" --arg ck "${ck}" --argjson witness "${witness_ok}" \
+    --argjson vip "${vip}" \
+    --argjson action_at "${action_at}" --argjson action_ok "${action_ok}" --arg action_message "${action_message}" \
+    --arg token "${promote_token}" --argjson promote_at "${promote_at}" --argjson promote_ok "${promote_ok}" \
+    --arg promote_message "${promote_message}" '{
+      at: $at, maintenance: $maintenance, maintenance_since: $since,
+      valkey: {role: $role, link: $link, master: $master, offset: $offset, priority: $priority},
+      sentinel: {master: $s_master, quorum: $quorum, message: $ck, witness: $witness},
+      vip: $vip,
+      last_action: (if $action_at > 0 then {at: $action_at, ok: $action_ok, message: $action_message} else null end),
+      promote: (if $token != "" then {token: $token, at: $promote_at, ok: $promote_ok, message: $promote_message}
+                else null end)
+    }' > "${PROBE}.tmp" && chmod 0644 "${PROBE}.tmp" && mv -f "${PROBE}.tmp" "${PROBE}"
+}
+
+stopping=n
+trap 'stopping=y' TERM INT
+mkdir -p "${STATE_DIR}"
+echo "Cluster node service of ${CRASSOSTREA_HOSTNAME} (${self})$([[ -e ${MAINTENANCE} ]] && echo ", in maintenance")"
+while [[ ${stopping} == n ]]; do
+  [[ -e ${REQUEST} ]] && apply_request
+  [[ -e ${BUNDLE_REQUEST} ]] && apply_bundle_request
+  probe
+  if [[ ${restart_self} == y ]]; then
+    # the members are read at the start (EnvironmentFile)
+    echo "Restarting to use the new membership"
+    systemctl --no-block restart crassostrea-cluster.service
+    exit 0
+  fi
+  for (( i = 0; i < INTERVAL; i++ )); do
+    [[ ${stopping} == y || -e ${REQUEST} || -e ${BUNDLE_REQUEST} ]] && break
+    sleep 1
+  done
+done

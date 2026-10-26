@@ -1,0 +1,13 @@
+{% if live_fragment %}{% include "_flashes.html" %}{% endif %}
+{% if change or busy %}
+{% set badges = {'ok': 'good', 'failed': 'bad', 'running': 'info', 'stale': 'warn'} %}
+<div class="card">
+  <div class="card-head"><h2>Last change</h2>
+    {% if busy and (not change or change.state != 'running') %}<span class="badge info">starting…</span>
+    {% elif change %}<span class="badge {{ badges.get(change.state, '') }}">{{ change.outcome }}</span>{% endif %}</div>
+  {% if change %}
+  <p>{{ change.message }} <span class="muted">({{ change.at|datetime }})</span></p>
+  {% if change.log %}<details><summary>Log</summary><pre class="log">{{ change.log }}</pre></details>{% endif %}
+  {% endif %}
+</div>
+{% endif %}

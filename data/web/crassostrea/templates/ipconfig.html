@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% from "_macros.html" import csrf %}
+{% block title %}Hostname and IP addressing{% endblock %}
+{% block content %}
+{% set locked = not state or state.cluster %}
+<div class="page-head">
+  <div>
+    <h1>Hostname and IP addressing</h1>
+    <p>The gateway's name, and the addresses and IP families of the server's network interfaces.</p>
+  </div>
+</div>
+
+{% include "_hostname_card.html" %}
+
+{% if state_error %}<div class="alert danger">{{ state_error }}</div>{% endif %}
+{% if state and state.cluster %}
+<div class="alert info">This gateway is a cluster member: its addresses identify it to the other members and are not
+  changed here.</div>
+{% endif %}
+
+{% if state %}
+{% if state.interfaces|length > 1 %}
+<div class="card">
+  <h2>Interfaces</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Interface</th><th>IPv4</th><th>IPv6</th><th></th></tr></thead>
+    <tbody>
+    {% for i in state.interfaces %}
+      <tr class="{{ 'selected' if i.device == state.device }}">
+        <td><a href="{{ url_for('ipconfig.index', device=i.device) }}#settings" class="mono"{% if i.device == state.device %} aria-current="true"{% endif %}>{{ i.device }}</a>
+          <div class="muted small">{{ i.name }}{{ ' · ' ~ i.type if i.type }}</div></td>
+        {% for v in (4, 6) %}{% set f = i['ipv%d' % v] %}
+        <td class="mono small">{% if not f.enabled %}<span class="badge">off</span>
+          {% else %}{% for a in i['live%d' % v] %}<div>{{ a }}</div>{% else %}<span class="muted">{{ 'DHCP' if f.method == 'auto' else 'no address' }}</span>{% endfor %}{% endif %}</td>
+        {% endfor %}
+        <td>{% if i.default %}<span class="badge info">default route</span>{% endif %}
+          {% if not i.ipv4.enabled and not i.ipv6.enabled %}<span class="badge warn">no address</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  <p class="muted">Choose an interface to change it. Either family can be off on any interface while another
+    interface keeps an address; the gateway's services use a family if any interface has it.</p>
+</div>
+{% endif %}
+<div class="card">
+  <div class="card-head"><h2>Current</h2><span class="mono">{{ state.device }} · {{ state.name }}</span></div>
+  <dl class="props">
+    <dt>IPv4</dt><dd class="mono">{% for a in state.live4 %}<div>{{ a }}</div>{% else %}<span class="muted">none</span>{% endfor %}</dd>
+    <dt>IPv4 gateway</dt><dd class="mono">{{ state.gateway4 or '–' }}</dd>
+    <dt>IPv6</dt><dd class="mono">{% for a in state.live6 %}<div>{{ a }}</div>{% else %}<span class="muted">none</span>{% endfor %}</dd>
+    <dt>IPv6 gateway</dt><dd class="mono">{{ state.gateway6 or '–' }}</dd>
+  </dl>
+</div>
+{% endif %}
+
+<div class="live" id="change" data-live data-live-refresh="5">
+{% include "_ipconfig_status.html" %}
+</div>
+
+{% if values %}
+<form method="post" action="{{ url_for('ipconfig.save') }}" class="card" id="settings">
+  {{ csrf() }}
+  {% if state %}<input type="hidden" name="device" value="{{ state.device }}">{% endif %}
+  <h2>Settings{% if state %} of <span class="mono">{{ state.device }}</span>{% endif %}</h2>
+  {% if error %}<div class="alert danger">{{ error }}</div>{% endif %}
+  <p class="muted">Off means the interface has no address of that family; the gateway's services stop using a
+    family only when no interface has it (loopback keeps both).
+    {% if state and state.others_enabled %}Both may be off here: another interface keeps an address.
+    {% else %}One family stays on: no other interface has an address.{% endif %}
+    After saving, every family with a gateway must reach the internet and names must resolve; otherwise the
+    previous settings come back.</p>
+  <div class="grid-2">
+  {% for v in (4, 6) %}
+    {% set f = values['ipv%d' % v] %}
+    <fieldset class="ip-family">
+      <legend>
+        <label class="check-field"><input type="checkbox" name="ipv{{ v }}_enabled" {{ 'checked' if f.enabled }}
+          {% if not (state and state.others_enabled) %}data-keep-one="ip-family"
+          data-keep-one-message="Keep IPv4 or IPv6 on: no other interface has an address."{% endif %}
+          {{ 'disabled' if locked }}> Use IPv{{ v }}</label>
+      </legend>
+      <div class="field">
+        <label for="ipv{{ v }}_method">Configuration</label>
+        <select id="ipv{{ v }}_method" name="ipv{{ v }}_method" {{ 'disabled' if locked }}>
+          {% for key, label in methods[v].items() %}<option value="{{ key }}" {{ 'selected' if f.method == key }}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="field">
+        <label for="ipv{{ v }}_addresses">Addresses</label>
+        <textarea id="ipv{{ v }}_addresses" name="ipv{{ v }}_addresses" rows="2" class="mono"
+                  placeholder="{{ '192.0.2.10/24' if v == 4 else '2001:db8::10/64' }}" {{ 'disabled' if locked }}>{{ f.addresses|join('\n') }}</textarea>
+        <div class="help">With prefix length, one per line. Used with the manual configuration.</div>
+      </div>
+      <div class="field">
+        <label for="ipv{{ v }}_gateway">Gateway</label>
+        <input type="text" id="ipv{{ v }}_gateway" name="ipv{{ v }}_gateway" value="{{ f.gateway }}" class="mono"
+               placeholder="{{ '192.0.2.1' if v == 4 else 'fe80::1' }}" {{ 'disabled' if locked }}>
+        {% if v == 6 %}<div class="help">Empty: from router advertisements.</div>{% endif %}
+      </div>
+      <div class="field">
+        <label for="ipv{{ v }}_dns">DNS servers</label>
+        <textarea id="ipv{{ v }}_dns" name="ipv{{ v }}_dns" rows="2" class="mono" {{ 'disabled' if locked }}>{{ f.dns|join('\n') }}</textarea>
+        {% if state and state.managed_resolver %}<div class="help">Not used while the gateway resolves names itself
+          (MANAGE_RESOLVER).</div>{% endif %}
+      </div>
+    </fieldset>
+  {% endfor %}
+  </div>
+  {% if client_version %}
+  <p class="alert warning">You are connected over IPv{{ client_version }} ({{ client_address }}). If that is through
+    {{ state.device if state else 'this interface' }}, turning IPv{{ client_version }} off here or changing its address
+    ends this session: open the web UI at the new address afterwards.</p>
+  {% endif %}
+  <p><button type="submit" class="btn primary" {{ 'disabled' if locked }}
+             data-confirm="Apply these IP settings? The network connection is reconfigured and tested; it falls back to the previous settings if the test fails.">Save and test</button></p>
+</form>
+{% endif %}
+{% endblock %}

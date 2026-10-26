@@ -1,0 +1,11 @@
+[Unit]
+Description=Crassostrea: update the SpamAssassin rules daily
+
+[Timer]
+Unit=crassostrea-sa-rules.service
+OnBootSec=10min
+OnUnitActiveSec=24h
+RandomizedDelaySec=1h
+
+[Install]
+WantedBy=timers.target
