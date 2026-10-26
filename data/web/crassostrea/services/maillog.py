@@ -128,10 +128,11 @@ def in_scope(entry, domains):
     return bool(involved & set(domains))
 
 
-def filtered(direction="", action="", domain="", search="", strict=False, domains=None):
+def filtered(direction="", action="", domain="", search="", strict=False, domains=None, delivery=""):
     """Entries matching the filters; ``strict`` rejects unknown values (API);
     ``domains``: only entries of these domains (a domain administrator's).
-    ``action`` "refused": the recipients Postfix refused (no message)."""
+    ``action`` "refused": the recipients Postfix refused (no message);
+    ``delivery``: delivered, deferred or bounced (services/deliveries.py)."""
     query = MailLogEntry.query
     if domains is not None:
         query = query.filter(db.or_(*[_domain_condition(d) for d in sorted(domains)])
@@ -160,6 +161,12 @@ def filtered(direction="", action="", domain="", search="", strict=False, domain
                                     MailLogEntry.header_from.ilike(like, escape="\\"),
                                     MailLogEntry.message_id.ilike(like, escape="\\"),
                                     MailLogEntry.qid == search, MailLogEntry.ip == search))
+    if delivery:
+        from . import deliveries
+        if delivery in deliveries.STATES:
+            query = deliveries.filter_state(query, delivery)
+        elif strict:
+            raise ServiceError(f"delivery must be one of: {', '.join(deliveries.STATES)}", "delivery", 400)
     return query.order_by(MailLogEntry.created_at.desc(), MailLogEntry.id.desc())
 
 
@@ -205,7 +212,10 @@ def requeue(entry, rcpts, requeued_by, allow_virus=False):
 
 
 def cleanup():
-    """Delete entries older than the retention period; returns (count, days)."""
+    """Delete entries older than the retention period, and their delivery
+    results; returns (count, days)."""
+    from . import deliveries
     days = get_setting("maillog_retention_days")
     cutoff = utcnow() - timedelta(days=days)
+    deliveries.cleanup()
     return MailLogEntry.query.filter(MailLogEntry.created_at < cutoff).delete(synchronize_session=False), days

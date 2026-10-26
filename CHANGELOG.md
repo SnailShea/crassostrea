@@ -16,6 +16,28 @@ tag `vMAJOR.MINOR.PATCH`; gateways with `UPDATE_CHANNEL=release` move to it with
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-26
+
+### Added
+
+- **Mail log: refused recipients.** For domains that validate recipients, the
+  recipients Postfix refuses because they do not exist appear in the mail log,
+  with Postfix's reason; filter "refused recipients", API `action=refused`.
+  `logship` reports them from the Postfix log.
+- **Mail log: delivery.** Each message shows what Postfix did with it per
+  recipient (delivered, deferred or bounced, with the receiving server's
+  answer and the number of attempts), whether it expired, and the bounces and
+  delay warnings the gateway sent the sender; filter "delivery", API
+  `delivery=` and `deliveries`.
+
+### Changed
+
+- Postfix uses long queue IDs (`enable_long_queue_ids`), which are never
+  reused: the mail log matches delivery results to messages by queue ID.
+  `sudo system/configure.sh` applies it; mail already queued keeps its ID.
+
+## [0.1.0] - 2026-10-26
+
 The first version: an inbound spam and virus filter (smart host) for EL10 on
 distribution packages, set up by `setup.sh` or from the installation ISO.
 
@@ -36,9 +58,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   and lists, accounts for recipients of quarantined mail, password links and
   "Forgot your password?", the import of password hashes of other systems.
 - **Mail log and statistics**: every scanned message in full, the score
-  breakdown with plain-language explanations, the recipients Postfix refused
-  because they do not exist, the dashboard's statistics, DMARC and TLS
-  reports, journaling.
+  breakdown with plain-language explanations, the dashboard's statistics,
+  DMARC and TLS reports, journaling.
 - **Administration**: the web interface with domain administrators, two-factor
   login, administrator networks, the audit log, API keys and the REST API
   (OpenAPI), branding, the time zone, certificates (Let's Encrypt or your own),
@@ -50,3 +71,7 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
 - **Installation and updates**: the installation ISO (AlmaLinux 10, unattended
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
+
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/SnailShea/crassostrea/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/SnailShea/crassostrea/releases/tag/v0.1.0

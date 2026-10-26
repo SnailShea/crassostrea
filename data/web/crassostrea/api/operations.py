@@ -13,8 +13,8 @@ from flask import current_app, g, jsonify, request, send_file
 
 from ..extensions import db
 from ..models import DIRECTIONS, DmarcReport, MailLogEntry, QuarantineItem, TlsReport
-from ..services import (audit, backups, cluster, hashcheck, journal, links, maillog, monitoring, postfix_control,
-                        reports, stats, store, user_reports)
+from ..services import (audit, backups, cluster, deliveries, hashcheck, journal, links, maillog, monitoring,
+                        postfix_control, reports, stats, store, user_reports)
 from ..services.maps import sync_all
 from ..services.quarantine import (SENDER_SCOPES, base_address, learn_spam_and_delete, list_sender, owned_by,
                                    parse_message, release)
@@ -154,6 +154,7 @@ def maillog_json(entry):
         "created_at": _iso(entry.created_at), "requeued_at": _iso(entry.requeued_at),
         "requeued_by": entry.requeued_by,
         "refused": entry.reject_reason or None,
+        "delivery": deliveries.states([entry])[entry.id][0],
     }
 
 
@@ -161,15 +162,19 @@ def maillog_json(entry):
 def list_maillog():
     args = request.args
     query = maillog.filtered(args.get("direction", ""), args.get("action", ""), args.get("domain", ""),
-                             args.get("q", ""), strict=True)
+                             args.get("q", ""), strict=True, delivery=args.get("delivery", ""))
     return _paginated(query, maillog_json)
 
 
 @bp.get("/mail-log/<int:entry_id>")
 def get_maillog_entry(entry_id):
     entry = _get(MailLogEntry, entry_id, "Logged message")
+    if entry.refused:
+        return jsonify({**maillog_json(entry), "symbols": [], "message": None, "quarantine_ids": [],
+                        "deliveries": None})
     return jsonify({**maillog_json(entry), "symbols": entry.symbol_list, "message": parse_message(entry.message),
-                    "quarantine_ids": [item.id for item in maillog.quarantined(entry)]})
+                    "quarantine_ids": [item.id for item in maillog.quarantined(entry)],
+                    "deliveries": deliveries.as_json(deliveries.summary(entry))})
 
 
 @bp.get("/mail-log/<int:entry_id>/raw")

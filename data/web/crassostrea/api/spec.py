@@ -64,6 +64,10 @@ GLOBAL_SCORE = {"type": "number", "minimum": -100, "maximum": 10000}
 DIGEST = {"type": "string", "nullable": True, "enum": list(DIGEST_INTERVALS) + [None],
           "description": "Quarantine digest interval, null = use the domain/global value"}
 PASSWORD = {"type": "string", "format": "password", "minLength": MIN_PASSWORD_LENGTH, "writeOnly": True}
+DELIVERY_STATE = {"type": "string", "nullable": True, "enum": ["delivered", "deferred", "bounced", None],
+                  "description": "What Postfix did with it: delivered to every recipient, still deferred for "
+                                 "one, or bounced (refused by a recipient's server, or expired); null before the "
+                                 "first attempt and for rejected mail"}
 SENDER_SCOPE_SCHEMA = {"type": "string", "enum": ["mailbox", "domain", "global"],
                        "description": "Also add the envelope sender to an allow list: the recipient's own "
                                       "(needs a mailbox user), its domain's, or the global one"}
@@ -706,6 +710,8 @@ def _operations_paths():
                            _query("action", "Rspamd action, or refused: the recipients Postfix refused because "
                                             "they do not exist (no message)",
                                   {"type": "string", "enum": [*MAILLOG_ACTIONS, "refused"]}),
+                           _query("delivery", "delivered (every recipient), deferred or bounced (any recipient)",
+                                  {"type": "string", "enum": ["delivered", "deferred", "bounced"]}),
                            _query("q", "Substring of subject, addresses or Message-ID; or a queue ID or IP")]),
         },
         "/mail-log/{entry_id}": {
@@ -1436,6 +1442,7 @@ def _operations_schemas():
         "size": {"type": "integer"}, "scan_ms": {"type": "integer"},
         "virus": {"type": "boolean"}, "created_at": TIMESTAMP,
         "requeued_at": {**TIMESTAMP, "nullable": True}, "requeued_by": {"type": "string", "nullable": True},
+        "delivery": DELIVERY_STATE,
         "refused": {"type": "string", "nullable": True,
                     "description": "Postfix's reason when it refused the recipient (it does not exist): then there "
                                    "is no message, score or symbols"},
@@ -1540,7 +1547,24 @@ def _operations_schemas():
         "MailLogDetail": {"type": "object", "properties": {
             **entry, "symbols": symbols, "message": preview,
             "quarantine_ids": {"type": "array", "items": {"type": "integer"},
-                               "description": "Quarantine items of the same message"}}},
+                               "description": "Quarantine items of the same message"},
+            "deliveries": {"type": "object", "nullable": True, "properties": {
+                "state": DELIVERY_STATE,
+                "deliveries": {"type": "array", "items": _ref("Delivery"),
+                               "description": "Each recipient's latest delivery attempt"},
+                "expired_at": {**TIMESTAMP, "nullable": True,
+                               "description": "Postfix gave up and returned the message to the sender"},
+                "notices": {"type": "array", "description": "Notices Postfix sent the sender", "items": {
+                    "type": "object", "properties": {
+                        "kind": {"type": "string", "enum": ["bounce_notice", "delay_notice", "dsn_notice"]},
+                        "queue_id": {"type": "string"}, "at": TIMESTAMP, "state": DELIVERY_STATE,
+                        "deliveries": {"type": "array", "items": _ref("Delivery")}}}}}}}},
+        "Delivery": {"type": "object", "properties": {
+            "rcpt": {"type": "string"},
+            "status": {"type": "string", "enum": ["sent", "deferred", "bounced"]},
+            "dsn": {"type": "string", "example": "5.1.1"}, "relay": {"type": "string"},
+            "detail": {"type": "string", "description": "The receiving server's answer"},
+            "attempts": {"type": "integer"}, "first_at": TIMESTAMP, "last_at": TIMESTAMP}},
         "RequeueRequest": {"type": "object", "additionalProperties": False, "properties": {
             "rcpts": {"type": "array", "items": {"type": "string"},
                       "description": "Recipients to deliver to (default: all of the message's)"},

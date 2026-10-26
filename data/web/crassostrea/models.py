@@ -562,6 +562,30 @@ class MailLogEntry(ScanSymbols, db.Model):
         return [r for r in self.rcpts.split(",") if r]
 
 
+class MailDelivery(db.Model):
+    """What Postfix did with a queued message, from its log
+    (system/libexec/logship, services/deliveries.py): per recipient the
+    latest delivery attempt (kind "delivery"), the notices Postfix sent the
+    sender ("bounce_notice", "delay_notice", "dsn_notice", with the notice's
+    own queue ID) and the expiry of a message that could not be delivered
+    ("expired"). Joined to the mail log by queue ID."""
+    __tablename__ = "mail_delivery"
+    __table_args__ = (db.UniqueConstraint("qid", "kind", "rcpt", name="uq_mail_delivery"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    qid = db.Column(db.String(32), nullable=False, index=True)
+    kind = db.Column(db.String(16), nullable=False, default="delivery")
+    rcpt = db.Column(db.String(320), nullable=False, default="")
+    status = db.Column(db.String(16), nullable=False, default="")
+    dsn = db.Column(db.String(16), nullable=False, default="")
+    relay = db.Column(db.String(255), nullable=False, default="")
+    detail = db.Column(db.String(500), nullable=False, default="")
+    notice_qid = db.Column(db.String(32), nullable=False, default="")
+    attempts = db.Column(db.Integer, nullable=False, default=1)
+    first_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    last_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+
+
 class AuditEntry(db.Model):
     """A change made through the web UI, the REST API or a management command
     (services/audit.py). Only appended to, and removed after

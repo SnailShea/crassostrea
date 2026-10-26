@@ -21,6 +21,11 @@
           {% if entry.direction == 'outbound' %}<span class="badge warn">outbound</span>{% endif %}
           {% if entry.is_virus %}<span class="badge bad">virus</span>{% endif %}
           {% if entry.requeued_at %}<span class="badge good">re-queued</span>{% endif %}
+          {% set state, notice = delivery.get(entry.id, (none, false)) %}
+          {% if state == 'delivered' %}<span class="badge good" title="Every recipient's server accepted it">delivered</span>
+          {% elif state == 'deferred' %}<span class="badge warn" title="Postfix retries the delivery">deferred</span>
+          {% elif state == 'bounced' %}<span class="badge bad" title="A recipient's server refused it, or it expired">bounced</span>{% endif %}
+          {% if notice %}<span class="badge info" title="The gateway sent the sender a non-delivery notice">bounce sent</span>{% endif %}
         </td>
       </tr>
     {% else %}

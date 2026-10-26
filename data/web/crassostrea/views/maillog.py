@@ -5,7 +5,7 @@ from flask_login import current_user
 
 from ..extensions import db
 from ..models import DIRECTIONS, Domain, MailLogEntry, get_setting
-from ..services import html_preview as html_preview_service, mailer, maillog
+from ..services import deliveries, html_preview as html_preview_service, mailer, maillog
 from ..services.errors import ServiceError
 from ..services.quarantine import parse_message
 from . import html_preview, protected_blueprint, render_live, scope
@@ -20,11 +20,13 @@ def index():
     page = request.args.get("page", 1, type=int)
     allowed = scope()
     query = maillog.filtered(request.args.get("direction", ""), request.args.get("action", ""),
-                             request.args.get("domain", ""), request.args.get("q", ""), domains=allowed)
+                             request.args.get("domain", ""), request.args.get("q", ""), domains=allowed,
+                             delivery=request.args.get("delivery", ""))
     pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
     domains = [d.name for d in Domain.query.order_by(Domain.name) if allowed is None or d.name in allowed]
     return render_live("maillog/index.html", "maillog/_live.html", pagination=pagination, domains=domains,
-                       directions=DIRECTIONS, actions=maillog.ACTIONS,
+                       directions=DIRECTIONS, actions=maillog.ACTIONS, delivery=deliveries.states(pagination.items),
+                       delivery_states=deliveries.STATES,
                        retention_days=get_setting("maillog_retention_days"))
 
 
@@ -41,6 +43,7 @@ def show(entry_id):
     if entry.refused:
         return render_template("maillog/show.html", entry=entry, quarantined=[], html_url=None)
     return render_template("maillog/show.html", entry=entry, quarantined=maillog.quarantined(entry),
+                           delivery=deliveries.summary(entry),
                            html_url=url_for("maillog.html", entry_id=entry.id)
                            if html_preview_service.has_html(entry.message) else None,
                            **parse_message(entry.message))

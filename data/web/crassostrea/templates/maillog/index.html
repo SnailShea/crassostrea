@@ -25,6 +25,10 @@
       {% for a in actions %}<option value="{{ a }}" {{ 'selected' if request.args.get('action') == a }}>{{ a }}</option>{% endfor %}
       <option value="refused" {{ 'selected' if request.args.get('action') == 'refused' }}>refused recipients</option>
     </select>
+    <select name="delivery" data-autosubmit aria-label="Delivery">
+      <option value="">Any delivery</option>
+      {% for s in delivery_states %}<option value="{{ s }}" {{ 'selected' if request.args.get('delivery') == s }}>{{ s }}</option>{% endfor %}
+    </select>
     <button type="submit" class="btn">Filter</button>
   </form>
 

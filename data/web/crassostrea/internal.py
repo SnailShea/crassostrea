@@ -9,7 +9,7 @@ from flask import Blueprint, Response, abort, current_app, request
 
 from .extensions import db
 from .models import Domain, QuarantineItem, get_setting
-from .services import journal, maillog, reports, siem, user_reports
+from .services import deliveries, journal, maillog, reports, siem, user_reports
 from .services.maps import render_rspamd_settings
 
 bp = Blueprint("internal", __name__, url_prefix="/internal")
@@ -116,6 +116,20 @@ def refused_recipient():
     db.session.commit()
     siem.enqueue("mail_log", siem.mail_event(entry))
     return f"stored {entry.id}", 200
+
+
+@bp.post("/delivery")
+def delivery_event():
+    """A delivery attempt or a notice to the sender, from the Postfix log
+    (system/libexec/logship, services/deliveries.py). 200 also for events it
+    does not keep, so logship never retries them."""
+    event = request.get_json(silent=True)
+    if not isinstance(event, dict):
+        return "invalid request", 400
+    if deliveries.record(event) is None:
+        return "skipped", 200
+    db.session.commit()
+    return "stored", 200
 
 
 @bp.post("/quarantine")

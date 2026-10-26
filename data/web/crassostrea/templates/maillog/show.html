@@ -80,6 +80,50 @@
   </div>
 </div>
 
+<div class="card" id="delivery">
+  <div class="card-head"><h2>Delivery</h2>
+    {% if delivery.state == 'delivered' %}<span class="badge good">delivered</span>
+    {% elif delivery.state == 'deferred' %}<span class="badge warn">deferred</span>
+    {% elif delivery.state == 'bounced' %}<span class="badge bad">bounced</span>{% endif %}</div>
+  {% if delivery.deliveries %}
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Recipient</th><th>Status</th><th>Server</th><th>Answer</th><th class="num">Attempts</th><th>Last attempt</th></tr></thead>
+    <tbody>
+    {% for d in delivery.deliveries %}
+      <tr>
+        <td class="mono">{{ d.rcpt }}</td>
+        <td><span class="badge {{ 'good' if d.status == 'sent' else ('warn' if d.status == 'deferred' else 'bad') }}">{{ d.status }}</span>
+          <span class="muted mono">{{ d.dsn }}</span></td>
+        <td class="mono">{{ d.relay }}</td>
+        <td class="symbol-help">{{ d.detail }}</td>
+        <td class="num">{{ d.attempts }}</td>
+        <td class="nowrap">{{ d.last_at|datetime }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% elif entry.action in ('reject', 'soft reject', 'greylist') %}
+  <p class="muted">Not delivered: the message was {{ 'rejected' if entry.action == 'reject' else 'deferred by the filter' }}.</p>
+  {% else %}
+  <p class="muted">No delivery recorded yet{% if not entry.qid %} (the message has no queue ID){% endif %}.</p>
+  {% endif %}
+  {% if delivery.expired %}
+  <div class="alert danger">Postfix gave up on {{ delivery.expired.last_at|datetime }}: the message stayed in the
+    queue too long and was returned to the sender.</div>
+  {% endif %}
+  {% for n in delivery.notices %}
+  <p>{{ n.label }} sent to <span class="mono">{{ entry.sender or '<>' }}</span> on {{ n.at|datetime }}
+    (queue ID <a class="mono" href="{{ url_for('logs.index', q=n.qid) }}">{{ n.qid }}</a>):
+    {% if n.state == 'delivered' %}<span class="badge good">delivered</span>
+    {% elif n.state == 'deferred' %}<span class="badge warn">deferred</span>
+    {% elif n.state == 'bounced' %}<span class="badge bad">bounced</span>
+    {% else %}<span class="muted">not delivered yet</span>{% endif %}
+    {% for d in n.deliveries if d.status != 'sent' %}<span class="symbol-help"> {{ d.detail }}</span>{% endfor %}</p>
+  {% endfor %}
+</div>
+
 <div class="card">
   <div class="card-head"><h2>Score breakdown</h2><span>{{ action_badge(entry.action) }} {{ '%.2f'|format(entry.score) }}</span></div>
   {% set symbols = entry.symbol_list %}

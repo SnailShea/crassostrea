@@ -201,7 +201,10 @@ existing mail server. A Flask web interface manages it.
 - **Mail log**: every message scanned for the protected domains and from the
   relay networks, and the recipients Postfix refused because they do not exist
   (with its reason; `logship` reports them from the Postfix log), with search
-  and filters (domain, direction, action, refused recipients). Each
+  and filters (domain, direction, action, refused recipients, delivery). Each
+  message shows its delivery per recipient (delivered, deferred or bounced,
+  with the receiving server's answer) and the notices the gateway sent the
+  sender. Each
   message opens with its details, the score breakdown (every rule with its
   score and details), the text, attachments and headers, and links to its
   quarantine items and Postfix log lines. Messages with an HTML body (here and
