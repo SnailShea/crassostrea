@@ -30,7 +30,7 @@ def _render():
         services_error = str(exc)
     return render_live("monitoring.html", "_monitoring_live.html", services=services, services_error=services_error,
                        checks=checks, labels={name: monitoring.label(name) for name in checks},
-                       failing_since=state)
+                       failing_since=state, deployed=monitoring.deployed())
 
 
 def _render_settings(siem_form=None, alert_form=None, code=200):

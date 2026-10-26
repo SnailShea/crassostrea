@@ -9,6 +9,16 @@
   </div>
 </div>
 
+<div class="card" id="version">
+  <h2>Version</h2>
+  <dl class="props">
+    <dt>Crassostrea</dt><dd class="mono">{{ deployed.version }}
+      {%- if deployed.release_url %} · <a href="{{ deployed.release_url }}" rel="noopener" target="_blank">release notes ↗</a>{% endif %}</dd>
+    <dt>Deployed</dt><dd>{{ deployed.deployed_at|datetime if deployed.deployed_at else '–' }}</dd>
+    <dt>Updates</dt><dd>{{ deployed.channel }} (<code>update.sh</code>, <code>UPDATE_CHANNEL</code> in crassostrea.conf)</dd>
+  </dl>
+</div>
+
 <div class="live" data-live data-live-refresh="30">
 {% include "_monitoring_live.html" %}
 </div>

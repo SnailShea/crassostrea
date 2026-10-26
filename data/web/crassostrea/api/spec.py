@@ -1602,7 +1602,11 @@ def build_spec():
                 "quarantine, the mail log, the mail queue and bans.\n\n"
                 "Authenticate with an API key created under **API keys** in the web interface, sent as "
                 "`X-API-Key` header. Read-only keys may only use GET."),
+            "contact": {"name": "Crassostrea", "url": "https://github.com/SnailShea/crassostrea"},
+            "license": {"name": "GPL-3.0", "url": "https://www.gnu.org/licenses/gpl-3.0.html"},
         },
+        "externalDocs": {"description": "Crassostrea documentation (also at /docs/ on the gateway, if deployed)",
+                         "url": "https://github.com/SnailShea/crassostrea-docs"},
         "servers": [{"url": "/api/v1"}],
         "security": [{"ApiKey": []}],
         "tags": [

@@ -5,13 +5,15 @@
 #
 #   DOCS_ENABLED  y: build and serve the documentation
 #   DOCS_SOURCE   the docs repository: a git URL or a directory; empty: the
-#                 crassostrea-docs checkout next to this repository
+#                 crassostrea-docs checkout next to this repository, or
+#                 without one the project's repository (DOCS_DEFAULT_SOURCE)
 #   DOCS_REF      branch or tag of a git URL (default: its default branch)
 #
 # A git URL is cloned to DOCS_CHECKOUT; update.sh and `system/docs.sh update`
 # fetch new commits. configure.sh rebuilds the site only when the source
 # changed (DOCS_STAMP holds a hash of it). The build disables the theme's
-# Google Fonts, so pages load nothing from elsewhere except Mermaid diagrams.
+# Google Fonts and the repository link (which queries GitHub), so pages load
+# nothing from elsewhere except Mermaid diagrams.
 #
 # Sourced by common.sh (configure.sh, update.sh, system/docs.sh).
 
@@ -19,19 +21,32 @@ DOCS_ROOT=/usr/local/share/crassostrea/docs
 DOCS_VENV=${SF_LIB}/docs-venv
 DOCS_CHECKOUT=${SF_STATE}/docs-src
 DOCS_STAMP=.sf-docs-source
+DOCS_DEFAULT_SOURCE=https://github.com/SnailShea/crassostrea-docs.git
 
 docs_is_url() {
   [[ $1 == *://* || $1 == git@* ]]
 }
 
-# The directory the site is built from (nothing if there is none)
-docs_source_dir() {
-  local source=${DOCS_SOURCE:-}
-  if [[ -z ${source} ]]; then
-    source=$(dirname "${SF_SRC}")/crassostrea-docs
-    [[ -f ${source}/mkdocs.yml ]] && echo "${source}"
+# The repository the documentation comes from: DOCS_SOURCE, else the
+# crassostrea-docs checkout next to this repository, else the project's
+docs_source() {
+  local sibling
+  if [[ -n ${DOCS_SOURCE:-} ]]; then
+    echo "${DOCS_SOURCE}"
     return 0
   fi
+  sibling=$(dirname "${SF_SRC}")/crassostrea-docs
+  if [[ -f ${sibling}/mkdocs.yml ]]; then
+    echo "${sibling}"
+  else
+    echo "${DOCS_DEFAULT_SOURCE}"
+  fi
+}
+
+# The directory the site is built from
+docs_source_dir() {
+  local source
+  source=$(docs_source)
   if docs_is_url "${source}"; then
     p "${DOCS_CHECKOUT}"
   else
@@ -54,9 +69,10 @@ _docs_git() {
 # docs_fetch [--update]: clone a git URL if it is not there yet; --update
 # also fetches new commits (a local checkout is fast-forwarded)
 docs_fetch() {
-  local update=$1 source=${DOCS_SOURCE:-} dir
+  local update=$1 source dir
+  source=$(docs_source)
   dir=$(docs_source_dir)
-  if [[ -n ${source} ]] && docs_is_url "${source}"; then
+  if docs_is_url "${source}"; then
     if [[ ! -d ${dir}/.git ]]; then
       dry && { log "Would clone the documentation from ${source}"; return 0; }
       log "Cloning the documentation from ${source}"
@@ -96,7 +112,7 @@ docs_build() {
   local force=$1 src stamp site venv cfg public
   src=$(docs_source_dir)
   if [[ -z ${src} || ! -f ${src}/mkdocs.yml ]]; then
-    warn "No documentation to build: set DOCS_SOURCE to the crassostrea-docs repository (git URL or directory)"
+    warn "No documentation in $(docs_source): DOCS_SOURCE must be the crassostrea-docs repository (git URL or directory)"
     return 1
   fi
   stamp=$(docs_fingerprint "${src}")
@@ -118,10 +134,13 @@ docs_build() {
 
   public=${WEB_PUBLIC_URL:-https://${CRASSOSTREA_HOSTNAME}}
   cfg=$(mktemp -d) || return 1
+  # no repository link: the theme would ask GitHub's API for its stars and forks
   cat > "${cfg}/mkdocs.yml" <<EOF
 INHERIT: '${src}/mkdocs.yml'
 docs_dir: '${src}/docs'
 site_url: '${public%/}/docs/'
+repo_url: null
+edit_uri: null
 theme:
   font: false
 EOF

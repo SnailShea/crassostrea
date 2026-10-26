@@ -3,8 +3,9 @@
 ## Reporting a vulnerability
 
 Please report security vulnerabilities privately, not in public issues:
-
-    security contact: <ADD THE MAINTAINERS' SECURITY ADDRESS HERE>
+open a [private vulnerability report](https://github.com/SnailShea/crassostrea/security/advisories/new)
+on GitHub (the repository's Security tab, "Report a vulnerability"). Only
+the maintainers can see it.
 
 Include the affected version (git commit), how to reproduce the problem and
 its impact. You will receive an acknowledgement, and updates while a fix is

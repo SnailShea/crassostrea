@@ -217,3 +217,20 @@ def test_api(api, gateway, fake_redis):
     assert api("PATCH", "/settings", json={"siem_protocol": "smoke"}).status_code == 422
 
 
+
+
+def test_version_card(logged_in, config):
+    with open(config["VERSION_FILE"], "w") as fh:
+        fh.write("v0.3.1\n1800000000\n")
+    page = logged_in.get("/monitoring/").get_data(as_text=True)
+    assert '<dd class="mono">v0.3.1' in page
+    assert 'href="https://github.com/SnailShea/crassostrea/releases/tag/v0.3.1"' in page
+    assert "the newest release" in page  # UPDATE_CHANNEL unset
+    # past a release, on the branch: no release notes
+    with open(config["VERSION_FILE"], "w") as fh:
+        fh.write("v0.3.1-4-g1a2b3c4d5e\n1800000000\n")
+    with open(config["CONF_FILE"], "w") as fh:
+        fh.write("UPDATE_CHANNEL=main\n")
+    page = logged_in.get("/monitoring/").get_data(as_text=True)
+    assert "v0.3.1-4-g1a2b3c4d5e" in page and "releases/tag" not in page
+    assert "the newest commit of the branch" in page

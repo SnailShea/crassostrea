@@ -17,7 +17,8 @@
 #   --config-only     stop after creating the configuration
 #   --docs            also deploy the documentation at https://<hostname>/docs/
 #                     (administrators only), from the crassostrea-docs
-#                     checkout next to this repository
+#                     checkout next to this repository, else from
+#                     github.com/SnailShea/crassostrea-docs
 #   --docs-source SRC the same from SRC, a git URL or directory of crassostrea-docs
 #   --no-docs         do not deploy it (and do not ask). Later: system/docs.sh
 #
@@ -183,7 +184,12 @@ choose_docs() {
   DOCS_ENABLED=y
   [[ -n ${found} ]] && { log "Using the documentation in ${found}"; return 0; }
   while true; do
-    read -r -e -p "Git URL or directory of the crassostrea-docs repository: " DOCS_SOURCE
+    # the project's repository unless edited (DOCS_SOURCE empty: system/lib/docs.sh)
+    read -r -e -i "${DOCS_DEFAULT_SOURCE}" -p "Git URL or directory of the crassostrea-docs repository: " DOCS_SOURCE
+    if [[ ${DOCS_SOURCE} == "${DOCS_DEFAULT_SOURCE}" ]]; then
+      DOCS_SOURCE=
+      return 0
+    fi
     if [[ ${DOCS_SOURCE} =~ ://|^git@ ]]; then
       return 0
     elif [[ -f ${DOCS_SOURCE}/mkdocs.yml ]]; then
@@ -384,10 +390,14 @@ LOG_LINES=9999
 # Change it with system/docs.sh install|remove.
 DOCS_ENABLED=${DOCS_ENABLED:-n}
 # The crassostrea-docs repository: a git URL or a directory. Empty: the
-# checkout next to this repository (../crassostrea-docs)
+# checkout next to this repository (../crassostrea-docs), else
+# https://github.com/SnailShea/crassostrea-docs.git
 DOCS_SOURCE=${DOCS_SOURCE:-}
 # Branch or tag of a git URL (empty: its default branch)
 DOCS_REF=
+# What update.sh installs: release (the newest release, a tag vX.Y.Z) or
+# main (the newest commit of the branch, for development and testing)
+UPDATE_CHANNEL=release
 
 # ------------------------------
 # High availability (cluster)

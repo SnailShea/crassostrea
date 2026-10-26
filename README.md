@@ -338,7 +338,7 @@ public resolvers.
 ## Installation
 
 ```bash
-git clone <this repository> /opt/crassostrea && cd /opt/crassostrea
+git clone https://github.com/SnailShea/crassostrea.git /opt/crassostrea && cd /opt/crassostrea
 sudo ./setup.sh
 ```
 
@@ -364,10 +364,11 @@ kept as `crassostrea.conf.bak`; settings you changed in it must be copied over),
 configuration, e.g. to edit it before installing).
 
 **Documentation on the gateway.** The administrator and developer guides are a
-separate repository, `crassostrea-docs` (MkDocs). The gateway can build them
+separate repository, [crassostrea-docs](https://github.com/SnailShea/crassostrea-docs) (MkDocs). The gateway can build them
 and serve them at `https://<hostname>/docs/` to logged-in administrators,
 linked from the web UI's menu: answer yes when `setup.sh` asks, or pass
-`--docs` (uses a checkout next to this one, e.g. `/opt/crassostrea-docs`) or
+`--docs` (uses a checkout next to this one, e.g. `/opt/crassostrea-docs`, else
+[crassostrea-docs](https://github.com/SnailShea/crassostrea-docs) on GitHub) or
 `--docs-source <git URL or directory>`; `--no-docs` skips the question. On an
 installed gateway: `sudo system/docs.sh install [SOURCE]`, later `update`,
 `rebuild`, `remove` or `status`. `update.sh` fetches the docs repository too,
@@ -378,8 +379,11 @@ For several gateways sharing their configuration, quarantine and learning
 data, see [High availability](#high-availability) (`setup.sh --ha`).
 
 Running `setup.sh` again is safe: an existing configuration is kept and the
-installation is brought up to date. `update.sh` pulls the repository and does
-the same. After editing `crassostrea.conf` or files in `data/conf/`, run
+installation is brought up to date. `update.sh` moves the checkout to the
+newest release (a tag `vX.Y.Z`; `UPDATE_CHANNEL=main` in `crassostrea.conf`, or
+`--channel main` once, follows the newest commit of the branch instead) and
+does the same. The Monitoring page shows the deployed version; the changes of
+each release are in [CHANGELOG.md](CHANGELOG.md). After editing `crassostrea.conf` or files in `data/conf/`, run
 `sudo system/configure.sh`.
 
 ## Putting a domain behind the gateway
@@ -422,7 +426,7 @@ read like a systemd `EnvironmentFile`). The most important ones:
 | `MANAGE_RESOLVER` | Make the local unbound the system resolver (default `y`) |
 | `HAPROXY_LISTENER`, `HAPROXY_LISTENER_BIND` | PROXY protocol listener for an HAProxy in front of Postfix (default off, `127.0.0.1:10025`) |
 | `IPV4_ENABLED`, `IPV6_ENABLED` | IP families on the network interface (`true`/`false`, at least one): the host's addresses and Postfix, unbound and nginx; also on the IP addressing page |
-| `DOCS_ENABLED`, `DOCS_SOURCE`, `DOCS_REF` | Serve the documentation at `/docs/` (default `n`); its repository (git URL or directory, default the `crassostrea-docs` checkout next to this one) and branch or tag; see `system/docs.sh` |
+| `DOCS_ENABLED`, `DOCS_SOURCE`, `DOCS_REF` | Serve the documentation at `/docs/` (default `n`); its repository (git URL or directory, default the `crassostrea-docs` checkout next to this one, else the one on GitHub) and branch or tag; see `system/docs.sh` |
 | `HA_NODES`, `HA_WITNESS` | Cluster members (`hostname=address`), see [High availability](#high-availability); empty for a single gateway |
 | `HA_VIP`, `HA_VIP_INTERFACE`, `HA_VIP_ROUTER_ID` | Floating address for the web UI in a cluster (keepalived) |
 
@@ -441,7 +445,7 @@ edit them in the repository, not in `/etc/`.
 
 | Task | Command |
 | --- | --- |
-| Update (git fast-forward, packages, redeploy, restart) | `sudo ./update.sh` |
+| Update (to the newest release or commit, packages, redeploy, restart) | `sudo ./update.sh` |
 | Apply changed settings | `sudo system/configure.sh` |
 | Reset an admin password | `sudo helper-scripts/reset-admin.sh [username]` |
 | Re-write all filter maps | `sudo systemctl start crassostrea-job@sync` |
@@ -588,7 +592,7 @@ the cluster CA; copy it securely and delete it afterwards). On each other
 member, one after another:
 
 ```bash
-git clone <this repository> /opt/crassostrea && cd /opt/crassostrea
+git clone https://github.com/SnailShea/crassostrea.git /opt/crassostrea && cd /opt/crassostrea
 sudo ./setup.sh --join /root/crassostrea-join-mx2.example.com.tar
 ```
 

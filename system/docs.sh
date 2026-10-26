@@ -5,7 +5,8 @@
 #   system/docs.sh install [SOURCE] [--ref REF]
 #       deploy it: SOURCE is the crassostrea-docs repository, a git URL or a
 #       directory (default: DOCS_SOURCE, else the checkout next to this
-#       repository); REF a branch or tag of a git URL
+#       repository, else github.com/SnailShea/crassostrea-docs); REF a branch
+#       or tag of a git URL
 #   system/docs.sh update
 #       fetch new commits of the source and rebuild if it changed (update.sh
 #       does this too)
@@ -53,9 +54,9 @@ install_docs() {
     source=$(realpath -e "${source}") || die "${source} does not exist"
     [[ -f ${source}/mkdocs.yml ]] || die "${source} is not the documentation repository (no mkdocs.yml)"
   fi
-  if [[ -n ${source} && ${source} != "${DOCS_SOURCE:-}" ]]; then
+  if [[ -n ${source} && ${source} != "$(docs_source)" ]]; then
     # a different repository: do not build from the old clone
-    docs_is_url "${DOCS_SOURCE:-}" && rm -rf "$(p "${DOCS_CHECKOUT}")"
+    docs_is_url "$(docs_source)" && rm -rf "$(p "${DOCS_CHECKOUT}")"
     conf_set DOCS_SOURCE "${source}"
   fi
   [[ -n ${ref} ]] && conf_set DOCS_REF "${ref}"
@@ -71,7 +72,7 @@ status() {
   site=$(p "${DOCS_ROOT}")
   src=$(docs_source_dir)
   echo "Enabled:  ${DOCS_ENABLED:-n}"
-  echo "Source:   ${DOCS_SOURCE:-${src:-none}}${DOCS_REF:+ (${DOCS_REF})}"
+  echo "Source:   $(docs_source)${DOCS_REF:+ (${DOCS_REF})}"
   if [[ -f ${site}/${DOCS_STAMP} ]]; then
     echo "Built:    $(date -r "${site}/${DOCS_STAMP}" '+%F %T'), $(
       [[ -n ${src} && $(docs_fingerprint "${src}") == "$(cat "${site}/${DOCS_STAMP}")" ]] \

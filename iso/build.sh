@@ -9,7 +9,8 @@
 #     --ref REF           branch, tag or commit to put on the ISO (default: the
 #                         checked-out branch). Committed changes only.
 #     --origin URL        git remote the installed checkout updates from
-#                         (update.sh); default: this repository's "origin"
+#                         (update.sh); default: this repository's "origin",
+#                         an SSH remote as HTTPS (gateways have no SSH key)
 #     --base-iso PATH     an AlmaLinux 10 minimal ISO you downloaded (still
 #                         checked against the signed CHECKSUM)
 #     --out DIR           where the ISO goes (default: iso/out)
@@ -87,7 +88,13 @@ stage_source() {
   if [[ -n $(git -C "${REPO}" status --porcelain --untracked-files=no 2> /dev/null) ]]; then
     log "Note: uncommitted changes are not put on the ISO, only ${REF} (${commit:0:12})"
   fi
-  [[ -n ${ORIGIN} ]] || ORIGIN=$(git -C "${REPO}" remote get-url origin 2> /dev/null)
+  if [[ -z ${ORIGIN} ]]; then
+    ORIGIN=$(git -C "${REPO}" remote get-url origin 2> /dev/null)
+    # git@github.com:owner/repo.git or ssh://git@github.com/owner/repo.git
+    if [[ ${ORIGIN} =~ ^(ssh://)?git@([^:/]+)[:/](.+)$ ]]; then
+      ORIGIN=https://${BASH_REMATCH[2]}/${BASH_REMATCH[3]}
+    fi
+  fi
   # the branch the installed checkout follows: REF if it is one, else main
   if git -C "${REPO}" show-ref --verify --quiet "refs/heads/${REF}"; then
     branch=${REF}

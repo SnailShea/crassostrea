@@ -108,6 +108,8 @@ class Config:
     CLUSTER_SETUP_REQUEST = os.environ.get("CLUSTER_SETUP_REQUEST", "/var/lib/crassostrea/web/cluster-setup.json")
     CLUSTER_SETUP_STATUS = os.environ.get("CLUSTER_SETUP_STATUS", "/var/lib/crassostrea/cluster-setup/status.json")
     VERSION_FILE = os.environ.get("SF_VERSION_FILE", "/usr/local/lib/crassostrea/version")
+    # Release notes of a deployed release: <PROJECT_URL>/releases/tag/<version>
+    PROJECT_URL = os.environ.get("PROJECT_URL", "https://github.com/SnailShea/crassostrea").rstrip("/")
     # The documentation at /docs/, served by nginx to administrators
     # (system/lib/docs.sh; auth.docs_access answers its auth_request)
     DOCS_ENABLED = _bool("DOCS_ENABLED", False)

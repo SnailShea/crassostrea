@@ -9,7 +9,7 @@ boot, once the machine is on its network, a console wizard runs
 
 ```bash
 iso/build.sh                       # the checked-out branch -> iso/out/
-iso/build.sh --ref v1.4.0 --origin https://github.com/<owner>/<repo>.git
+iso/build.sh --ref v1.4.0 --origin https://github.com/SnailShea/crassostrea.git
 ```
 
 - **Base image:** the newest AlmaLinux 10 **minimal** ISO is downloaded to

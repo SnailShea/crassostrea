@@ -154,6 +154,8 @@ load_config() {
   # system/lib/docs.sh passes them to git and into the MkDocs configuration
   [[ -z ${DOCS_REF:-} || ${DOCS_REF} =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] \
     || die "DOCS_REF must be a branch or tag name"
+  [[ -z ${UPDATE_CHANNEL:-} || ${UPDATE_CHANNEL} == release || ${UPDATE_CHANNEL} == main ]] \
+    || die "UPDATE_CHANNEL must be release or main"
   [[ ${DOCS_SOURCE:-} != *[\'\"[:space:]]* && ${DOCS_SOURCE:-} != -* ]] \
     || die "DOCS_SOURCE must be a git URL or a directory without spaces or quotes"
   ha_parse

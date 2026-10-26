@@ -84,7 +84,7 @@ deploy() {
   # The deployed version and since when, compared between the nodes of a
   # cluster (Cluster page)
   local version
-  version=$(git -c safe.directory="${SF_SRC}" -C "${SF_SRC}" describe --always --dirty --abbrev=10 2> /dev/null)
+  version=$(git -c safe.directory="${SF_SRC}" -C "${SF_SRC}" describe --tags --always --dirty --abbrev=10 2> /dev/null)
   version=${version:-unknown}
   if [[ $(head -1 "$(p "${SF_LIB}/version")" 2> /dev/null) != "${version}" ]]; then
     printf '%s\n%s\n' "${version}" "$(date +%s)" | write_file "${SF_LIB}/version" 0644

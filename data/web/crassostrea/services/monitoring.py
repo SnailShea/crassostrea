@@ -18,6 +18,7 @@ fails and when it recovers; the state is kept in Valkey (sf_alert_state).
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from datetime import timedelta
@@ -29,7 +30,7 @@ from flask import current_app
 
 from ..extensions import db
 from ..models import Directory, MailLogEntry, QuarantineItem, StatBucket, get_setting, set_setting, utcnow
-from . import backups, certificates, cluster, mailer, postfix_control, store, system
+from . import backups, certificates, cluster, mailer, postfix_control, store, sysconf, system
 from .rspamd import RspamdError, client
 
 ALERT_STATE = "sf_alert_state"
@@ -382,6 +383,20 @@ def run_alerts(results=None, now=None):
         pipe.hset(ALERT_STATE, mapping={k: json.dumps(v) for k, v in state.items()})
     pipe.execute()
     return failing, recovered
+
+
+RELEASE_RE = re.compile(r"^v\d+\.\d+\.\d+$")
+UPDATE_CHANNELS = {"release": "the newest release", "main": "the newest commit of the branch"}
+
+
+def deployed():
+    """The deployed version for the Monitoring page: {version, deployed_at,
+    release_url (a release exactly, else None), channel (update.sh)}."""
+    name, deployed_at = cluster.version()
+    channel = sysconf.read(("UPDATE_CHANNEL",)).get("UPDATE_CHANNEL") or "release"
+    url = f"{current_app.config['PROJECT_URL']}/releases/tag/{name}" if RELEASE_RE.match(name) else None
+    return {"version": name or "unknown", "deployed_at": deployed_at, "release_url": url,
+            "channel": UPDATE_CHANNELS.get(channel, channel)}
 
 
 def record_problems(results):

@@ -5,6 +5,13 @@ development environment, tests) is in the separate documentation project
 (`crassostrea-docs`, section "Developer guide"); please read it before larger
 changes.
 
+## Releases
+
+Releases are tags `vMAJOR.MINOR.PATCH` (Semantic Versioning, see the top of
+[CHANGELOG.md](CHANGELOG.md)). Add your change under **Unreleased** in the
+changelog; the maintainers move it to a version when they tag a release. The
+release procedure is in the developer guide ("Contributing", "Releases").
+
 ## Pull requests
 
 1. Base your branch on the current development branch and name it after the
