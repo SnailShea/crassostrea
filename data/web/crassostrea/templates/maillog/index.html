@@ -23,6 +23,7 @@
     <select name="action" data-autosubmit aria-label="Action">
       <option value="">All actions</option>
       {% for a in actions %}<option value="{{ a }}" {{ 'selected' if request.args.get('action') == a }}>{{ a }}</option>{% endfor %}
+      <option value="refused" {{ 'selected' if request.args.get('action') == 'refused' }}>refused recipients</option>
     </select>
     <button type="submit" class="btn">Filter</button>
   </form>

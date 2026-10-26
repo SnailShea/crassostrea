@@ -35,7 +35,8 @@ def mail_event(entry):
             "direction": entry.direction, "queue_id": entry.qid, "message_id": entry.message_id,
             "sender": entry.sender, "recipients": entry.rcpt_list, "from": entry.header_from,
             "subject": entry.subject, "score": entry.score, "action": entry.action, "ip": entry.ip,
-            "size": entry.size, "virus": entry.is_virus, "symbols": [s["name"] for s in entry.symbol_list]}
+            "size": entry.size, "virus": entry.is_virus, "symbols": [s["name"] for s in entry.symbol_list],
+            **({"refused": entry.reject_reason} if entry.reject_reason else {})}
 
 
 def audit_event(entry, description):

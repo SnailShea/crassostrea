@@ -2,6 +2,28 @@
 {% from "_macros.html" import action_badge, csrf %}
 {% block title %}Logged message{% endblock %}
 {% block content %}
+{% if entry.refused %}
+<div class="page-head">
+  <div>
+    <h1>Refused recipient</h1>
+    <p><a href="{{ url_for('maillog.index') }}">‹ Mail log</a></p>
+  </div>
+</div>
+
+<div class="card">
+  <p class="muted">Postfix refused this recipient during the SMTP dialogue, before the message was sent: the
+    address does not exist. The sending server got the error; there is no message, no scan and nothing to queue
+    again.</p>
+  <dl class="props">
+    <dt>Refused</dt><dd>{{ entry.created_at|datetime }}</dd>
+    <dt>Recipient</dt><dd class="mono">{{ entry.rcpts }}</dd>
+    <dt>Envelope sender</dt><dd class="mono">{{ entry.sender or '<>' }}</dd>
+    <dt>Client IP</dt><dd class="mono">{{ entry.ip or '–' }}</dd>
+    <dt>Postfix's reason</dt><dd>{{ entry.reject_reason }}</dd>
+    <dt>Postfix log</dt><dd><a href="{{ url_for('logs.index', q=entry.rcpts) }}">Lines with this recipient</a></dd>
+  </dl>
+</div>
+{% else %}
 <div class="page-head">
   <div>
     <h1>{{ entry.subject or "(no subject)" }}</h1>
@@ -84,4 +106,5 @@
 </div>
 
 {% include "quarantine/_content.html" %}
+{% endif %}
 {% endblock %}

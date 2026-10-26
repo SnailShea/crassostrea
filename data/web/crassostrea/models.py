@@ -525,7 +525,8 @@ class QuarantineItem(ScanSymbols, db.Model):
 class MailLogEntry(ScanSymbols, db.Model):
     """Every message Rspamd scanned for a protected domain or from a relay
     network, one row per message (all recipients), with the message as
-    scanned."""
+    scanned. Also recipients Postfix refused because they do not exist
+    (reject_reason set): no message, nothing scanned."""
     __tablename__ = "mail_log"
 
     id = db.Column(db.Integer, primary_key=True)
@@ -547,6 +548,14 @@ class MailLogEntry(ScanSymbols, db.Model):
     message = db.deferred(db.Column(db.LargeBinary().with_variant(mysql.LONGBLOB(), "mysql"), nullable=False))
     requeued_at = db.Column(db.DateTime)
     requeued_by = db.Column(db.String(64))
+    # Postfix's reason for refusing the recipient (services/maillog.py
+    # store_refused); empty for scanned messages
+    reject_reason = db.Column(db.String(255), nullable=False, default="", server_default="")
+
+    @property
+    def refused(self):
+        """A recipient refused before the message was sent: no message."""
+        return bool(self.reject_reason)
 
     @property
     def rcpt_list(self):

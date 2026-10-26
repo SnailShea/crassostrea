@@ -153,6 +153,7 @@ def maillog_json(entry):
         "size": entry.size, "scan_ms": entry.scan_ms, "virus": entry.is_virus,
         "created_at": _iso(entry.created_at), "requeued_at": _iso(entry.requeued_at),
         "requeued_by": entry.requeued_by,
+        "refused": entry.reject_reason or None,
     }
 
 
@@ -174,6 +175,8 @@ def get_maillog_entry(entry_id):
 @bp.get("/mail-log/<int:entry_id>/raw")
 def get_maillog_raw(entry_id):
     entry = _get(MailLogEntry, entry_id, "Logged message")
+    if entry.refused:
+        raise ApiError(404, "Postfix refused this recipient: there is no message")
     return current_app.response_class(entry.message, mimetype="message/rfc822", headers={
         "Content-Disposition": f'attachment; filename="mail-log-{entry.id}.eml"'})
 

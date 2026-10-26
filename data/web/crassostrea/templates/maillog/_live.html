@@ -11,11 +11,12 @@
       <tr>
         <td class="nowrap">{{ entry.created_at|datetime }}</td>
         <td>{{ action_badge(entry.action) }}</td>
-        <td class="num">{{ '%.2f'|format(entry.score) }}</td>
+        <td class="num">{{ '–' if entry.refused else '%.2f'|format(entry.score) }}</td>
         <td class="truncate">{{ entry.sender or '<>' }}</td>
         <td class="truncate">{{ entry.rcpt_list|join(', ') }}</td>
-        <td class="truncate"><a href="{{ url_for('maillog.show', entry_id=entry.id) }}">{{ entry.subject or '(no subject)' }}</a></td>
-        <td class="num nowrap">{{ entry.size|filesize }}</td>
+        <td class="truncate"><a href="{{ url_for('maillog.show', entry_id=entry.id) }}">
+          {%- if entry.refused %}<span class="muted">Refused: {{ entry.reject_reason }}</span>{% else %}{{ entry.subject or '(no subject)' }}{% endif %}</a></td>
+        <td class="num nowrap">{{ '–' if entry.refused else entry.size|filesize }}</td>
         <td class="nowrap">
           {% if entry.direction == 'outbound' %}<span class="badge warn">outbound</span>{% endif %}
           {% if entry.is_virus %}<span class="badge bad">virus</span>{% endif %}

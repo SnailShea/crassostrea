@@ -703,7 +703,9 @@ def _operations_paths():
                            _query("domain", "A recipient's or the sender's domain"),
                            _query("direction", "inbound or outbound",
                                   {"type": "string", "enum": ["inbound", "outbound"]}),
-                           _query("action", "Rspamd action", {"type": "string", "enum": list(MAILLOG_ACTIONS)}),
+                           _query("action", "Rspamd action, or refused: the recipients Postfix refused because "
+                                            "they do not exist (no message)",
+                                  {"type": "string", "enum": [*MAILLOG_ACTIONS, "refused"]}),
                            _query("q", "Substring of subject, addresses or Message-ID; or a queue ID or IP")]),
         },
         "/mail-log/{entry_id}": {
@@ -1434,6 +1436,9 @@ def _operations_schemas():
         "size": {"type": "integer"}, "scan_ms": {"type": "integer"},
         "virus": {"type": "boolean"}, "created_at": TIMESTAMP,
         "requeued_at": {**TIMESTAMP, "nullable": True}, "requeued_by": {"type": "string", "nullable": True},
+        "refused": {"type": "string", "nullable": True,
+                    "description": "Postfix's reason when it refused the recipient (it does not exist): then there "
+                                   "is no message, score or symbols"},
     }
     return {
         "MailLogEntry": {"type": "object", "properties": entry},

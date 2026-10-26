@@ -4,21 +4,27 @@ relay network, with its content, kept for ``maillog_retention_days``
 
 Rspamd's metadata_exporter posts each message to the internal API
 (/internal/mail-log, see data/conf/rspamd/local.d/metadata_exporter.conf).
-Shared by the admin area and the REST API.
+Recipients Postfix refused because they do not exist never reach Rspamd:
+system/libexec/logship finds them in the Postfix log and posts them to
+/internal/refused-recipient (``store_refused``). Shared by the admin area and
+the REST API.
 """
 import email.parser
+import ipaddress
 import json
 import re
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from ..extensions import db
-from ..models import DIRECTIONS, MailLogEntry, QuarantineItem, get_setting, utcnow
+from ..models import DIRECTIONS, MAX_MAILLOG_DAYS, Domain, MailLogEntry, QuarantineItem, get_setting, utcnow
 from . import mailer, stats
 from .errors import ServiceError
 from .headers import REQUEUE_HEADER
 from .quarantine import _escape_like, prepare_reinjection
 
 ACTIONS = ("no action", "greylist", "add header", "rewrite subject", "soft reject", "reject")
+# the filter for recipients Postfix refused (not an Rspamd action)
+REFUSED = "refused"
 
 
 def _known(value):
@@ -71,6 +77,42 @@ def store(meta, raw, direction):
     return entry
 
 
+# Postfix's reasons for refusing a recipient that does not exist (the
+# recipient list or directory, or the destination server's verification)
+REFUSED_REASONS = ("User unknown", "undeliverable address")
+# How old a refusal may be when it arrives (logship catches up after a restart)
+REFUSED_MAX_AGE = timedelta(days=MAX_MAILLOG_DAYS)
+
+
+def store_refused(event, now=None):
+    """A recipient Postfix refused before the message was sent, reported by
+    system/libexec/logship: {time, ip, sender, rcpt, reason}. No message and
+    no scan: one row, action reject, the reason in reject_reason. Not counted
+    in the statistics. Returns the entry, or None for an invalid event or a
+    recipient outside the gateway's domains."""
+    now = now or utcnow()
+    try:
+        moment = datetime.fromtimestamp(int(event["time"]), timezone.utc).replace(tzinfo=None)
+        ip = str(ipaddress.ip_address(str(event["ip"])))
+        sender = str(event.get("sender") or "").strip().lower()
+        rcpt = str(event["rcpt"]).strip().lower()
+        reason = " ".join(str(event["reason"]).split())
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not now - REFUSED_MAX_AGE <= moment <= now + timedelta(minutes=5):
+        return None
+    if not reason.startswith(REFUSED_REASONS) or len(sender) > 320 or len(rcpt) > 320 or "@" not in rcpt:
+        return None
+    if any(c.isspace() or c in "<>," for c in sender + rcpt):
+        return None
+    if Domain.query.filter_by(name=rcpt.rpartition("@")[2]).first() is None:
+        return None
+    entry = MailLogEntry(created_at=moment, direction="inbound", sender=sender, rcpts=rcpt, action="reject",
+                         ip=ip, symbols="[]", size=0, scan_ms=0, message=b"", reject_reason=reason[:255])
+    db.session.add(entry)
+    return entry
+
+
 def _domain_condition(domain):
     # a recipient's domain (the list is comma separated) or the sender's
     d = _escape_like(domain)
@@ -88,7 +130,8 @@ def in_scope(entry, domains):
 
 def filtered(direction="", action="", domain="", search="", strict=False, domains=None):
     """Entries matching the filters; ``strict`` rejects unknown values (API);
-    ``domains``: only entries of these domains (a domain administrator's)."""
+    ``domains``: only entries of these domains (a domain administrator's).
+    ``action`` "refused": the recipients Postfix refused (no message)."""
     query = MailLogEntry.query
     if domains is not None:
         query = query.filter(db.or_(*[_domain_condition(d) for d in sorted(domains)])
@@ -98,11 +141,13 @@ def filtered(direction="", action="", domain="", search="", strict=False, domain
             query = query.filter(MailLogEntry.direction == direction)
         elif strict:
             raise ServiceError("direction must be inbound or outbound", "direction", 400)
-    if action:
+    if action == REFUSED:
+        query = query.filter(MailLogEntry.reject_reason != "")
+    elif action:
         if action in ACTIONS:
             query = query.filter(MailLogEntry.action == action)
         elif strict:
-            raise ServiceError(f"action must be one of: {', '.join(ACTIONS)}", "action", 400)
+            raise ServiceError(f"action must be one of: {', '.join(ACTIONS + (REFUSED,))}", "action", 400)
     domain = domain.strip().lower()
     if domain:
         query = query.filter(_domain_condition(domain))
@@ -130,6 +175,8 @@ def requeue(entry, rcpts, requeued_by, allow_virus=False):
     Postfix's re-injection listener (no second scan). Returns notes; raises
     ServiceError for invalid requests, mailer.ReleaseError if Postfix refuses
     every recipient."""
+    if entry.refused:
+        raise ServiceError("Postfix refused this recipient: there is no message to queue", status=409)
     if entry.is_virus and not allow_virus:
         raise ServiceError("This message contains a virus; confirm to queue it anyway", "allow_virus", 409)
     rcpts = [r.strip().lower() for r in rcpts]

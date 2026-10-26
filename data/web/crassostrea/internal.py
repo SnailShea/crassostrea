@@ -101,6 +101,23 @@ def maillog_ingest():
     return f"stored {entry.id}", 200
 
 
+@bp.post("/refused-recipient")
+def refused_recipient():
+    """A recipient Postfix refused because it does not exist, found in the
+    Postfix log by system/libexec/logship (JSON: time, ip, sender, rcpt,
+    reason). Answers 200 also for events it does not keep (another domain, an
+    unknown reason), so logship never retries them."""
+    event = request.get_json(silent=True)
+    if not isinstance(event, dict):
+        return "invalid request", 400
+    entry = maillog.store_refused(event)
+    if entry is None:
+        return "skipped", 200
+    db.session.commit()
+    siem.enqueue("mail_log", siem.mail_event(entry))
+    return f"stored {entry.id}", 200
+
+
 @bp.post("/quarantine")
 def quarantine_ingest():
     """Rejected messages, one quarantine item per recipient."""

@@ -38,6 +38,8 @@ def _get_entry(entry_id):
 @bp.get("/<int:entry_id>")
 def show(entry_id):
     entry = _get_entry(entry_id)
+    if entry.refused:
+        return render_template("maillog/show.html", entry=entry, quarantined=[], html_url=None)
     return render_template("maillog/show.html", entry=entry, quarantined=maillog.quarantined(entry),
                            html_url=url_for("maillog.html", entry_id=entry.id)
                            if html_preview_service.has_html(entry.message) else None,
@@ -46,12 +48,17 @@ def show(entry_id):
 
 @bp.get("/<int:entry_id>/html")
 def html(entry_id):
-    return html_preview(_get_entry(entry_id).message)
+    entry = _get_entry(entry_id)
+    if entry.refused:
+        abort(404)
+    return html_preview(entry.message)
 
 
 @bp.get("/<int:entry_id>/raw")
 def raw(entry_id):
     entry = _get_entry(entry_id)
+    if entry.refused:
+        abort(404)
     return send_file(io.BytesIO(entry.message), mimetype="message/rfc822", as_attachment=True,
                      download_name=f"mail-log-{entry.id}.eml")
 

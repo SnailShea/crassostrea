@@ -7,7 +7,7 @@ from flask import request
 from flask_login import current_user
 
 from ..extensions import db
-from ..models import Domain, QuarantineItem, utcnow
+from ..models import Domain, MailLogEntry, QuarantineItem, utcnow
 from ..services import cluster as cluster_service, maillog, stats, store, system
 from ..services.rspamd import RspamdError, client
 from . import in_scope, protected_blueprint, render_live, scope
@@ -39,7 +39,9 @@ def index():
         quarantined = quarantined.filter(QuarantineItem.domain == domain)
     quarantine = {"total": quarantined.count(),
                   "last_24h": quarantined.filter(QuarantineItem.created_at >= since).count()}
-    recent = maillog.filtered(direction=direction, domain=domain, domains=allowed).limit(10).all()
+    # mail that arrived: refused recipients (no message) only crowd it out
+    recent = (maillog.filtered(direction=direction, domain=domain, domains=allowed)
+              .filter(MailLogEntry.reject_reason == "").limit(10).all())
     scoped = [d for d in Domain.query.order_by(Domain.name) if in_scope(d.name)]
     domains = [d.name for d in scoped]
 

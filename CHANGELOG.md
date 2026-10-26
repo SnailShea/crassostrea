@@ -36,8 +36,9 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   and lists, accounts for recipients of quarantined mail, password links and
   "Forgot your password?", the import of password hashes of other systems.
 - **Mail log and statistics**: every scanned message in full, the score
-  breakdown with plain-language explanations, the dashboard's statistics,
-  DMARC and TLS reports, journaling.
+  breakdown with plain-language explanations, the recipients Postfix refused
+  because they do not exist, the dashboard's statistics, DMARC and TLS
+  reports, journaling.
 - **Administration**: the web interface with domain administrators, two-factor
   login, administrator networks, the audit log, API keys and the REST API
   (OpenAPI), branding, the time zone, certificates (Let's Encrypt or your own),

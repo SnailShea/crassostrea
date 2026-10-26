@@ -199,7 +199,9 @@ existing mail server. A Flask web interface manages it.
 - **Training**: upload or paste misclassified messages to train Bayes and the
   local fuzzy storage.
 - **Mail log**: every message scanned for the protected domains and from the
-  relay networks, with search and filters (domain, direction, action). Each
+  relay networks, and the recipients Postfix refused because they do not exist
+  (with its reason; `logship` reports them from the Postfix log), with search
+  and filters (domain, direction, action, refused recipients). Each
   message opens with its details, the score breakdown (every rule with its
   score and details), the text, attachments and headers, and links to its
   quarantine items and Postfix log lines. Messages with an HTML body (here and

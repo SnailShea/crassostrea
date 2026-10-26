@@ -98,7 +98,9 @@ def _init_database():
 
 # Columns added to existing tables: (table, column, DDL type). create_all()
 # only creates missing tables, never columns; init-db adds these.
-_MIGRATIONS = []
+_MIGRATIONS = [
+    ("mail_log", "reject_reason", "VARCHAR(255) NOT NULL DEFAULT ''"),
+]
 
 
 def _migrate():
