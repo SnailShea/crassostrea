@@ -7,12 +7,24 @@
 # name, because a name is validated before it is configured (staging tests,
 # a new hostname).
 #
+# The web server settings of the web UI (Settings -> General, Web server, written to
+# NGINX_ACCESS_SETTINGS) go to small files nginx includes: the HTTP to HTTPS
+# redirect, the networks of the Rspamd UI and the trusted reverse proxies.
+#
 # Sourced by common.sh, and deployed to /usr/local/lib/crassostrea/lib for
 # system/libexec/set-hostname and tls-apply, which change the names and
-# rewrite NGINX_NAMES_CONF without a configure.sh run. Uses the variables
-# above from the caller's environment.
+# rewrite NGINX_NAMES_CONF without a configure.sh run, and for nginx-apply,
+# which rewrites the settings' files. Uses the variables above from the
+# caller's environment.
 
 NGINX_NAMES_CONF=/etc/nginx/crassostrea-server-names.conf
+NGINX_ACCESS_SETTINGS=${NGINX_ACCESS_SETTINGS:-/var/lib/crassostrea/web/web-access}
+# the default of the map $sf_https_redirect (1: redirect)
+NGINX_REDIRECT_CONF=/etc/nginx/crassostrea-https-redirect.conf
+# allow/deny of location /rspamd/
+NGINX_RSPAMD_ACCESS_CONF=/etc/nginx/crassostrea-rspamd-access.conf
+# set_real_ip_from of every server
+NGINX_REAL_IP_CONF=/etc/nginx/crassostrea-real-ip.conf
 
 # The names, one per line; what is no valid server name is left out
 nginx_server_names() {
@@ -64,6 +76,92 @@ nginx_update_names() {
   else
     mv "${file}.previous" "${file}"
     echo "nginx refused the names $(nginx_server_names | tr '\n' ' '); the previous ones stay" >&2
+    return 1
+  fi
+}
+
+# nginx_access_value KEY: a value of NGINX_ACCESS_SETTINGS (empty if unset)
+nginx_access_value() {
+  [[ -r ${NGINX_ACCESS_SETTINGS} ]] || return 0
+  sed -n "s/^$1=//p" "${NGINX_ACCESS_SETTINGS}" | head -1
+}
+
+# nginx_networks LIST FORMAT: one line per network or address of LIST
+# (separated by spaces or commas); anything else is left out
+nginx_networks() {
+  local net
+  for net in ${1//,/ }; do
+    if [[ ${net} =~ ^[0-9A-Fa-f.:]+(/[0-9]{1,3})?$ ]]; then
+      # shellcheck disable=SC2059
+      printf "$2\n" "${net}"
+    else
+      echo "Ignoring ${net:0:60}: not a network or an address" >&2
+    fi
+  done
+}
+
+nginx_redirect_conf() {
+  local value
+  value=$(nginx_access_value http_redirect)
+  echo "# Generated from the web UI's settings (system/lib/nginx.sh) - do not edit"
+  # no setting yet (a new gateway): redirect
+  [[ ${value:-1} == 0 ]] && echo "default 0;" || echo "default 1;"
+}
+
+nginx_rspamd_access_conf() {
+  local networks
+  networks=$(nginx_access_value rspamd_ui_networks)
+  echo "# Generated from the web UI's settings (system/lib/nginx.sh) - do not edit"
+  if [[ -n ${networks//[[:space:],]/} ]]; then
+    nginx_networks "${networks}" 'allow %s;'
+    # everyone else, also when no entry was valid
+    echo "deny all;"
+  fi
+}
+
+nginx_real_ip_conf() {
+  local proxies
+  proxies=$(nginx_access_value trusted_proxies)
+  echo "# Generated from the web UI's settings (system/lib/nginx.sh) - do not edit"
+  if [[ -n ${proxies//[[:space:],]/} ]]; then
+    nginx_networks "${proxies}" 'set_real_ip_from %s;'
+    echo "real_ip_header X-Forwarded-For;"
+    echo "real_ip_recursive on;"
+  fi
+}
+
+# For nginx-apply: rewrite the three files and reload nginx if one changed
+# and nginx accepts them (else the previous files are restored)
+nginx_update_access() {
+  local file changed=() tmp
+  declare -A render=([${NGINX_REDIRECT_CONF}]=nginx_redirect_conf
+                     [${NGINX_RSPAMD_ACCESS_CONF}]=nginx_rspamd_access_conf
+                     [${NGINX_REAL_IP_CONF}]=nginx_real_ip_conf)
+  for file in "${!render[@]}"; do
+    tmp=$(mktemp "${file}.XXXXXX") || return 1
+    "${render[${file}]}" > "${tmp}"
+    if [[ -f ${file} ]] && cmp -s "${tmp}" "${file}"; then
+      rm -f "${tmp}"
+      continue
+    fi
+    [[ -f ${file} ]] && cp -a "${file}" "${file}.previous"
+    chmod 0644 "${tmp}"
+    mv "${tmp}" "${file}"
+    command -v restorecon > /dev/null && restorecon "${file}" > /dev/null 2>&1
+    changed+=("${file}")
+  done
+  (( ${#changed[@]} )) || return 0
+  if nginx -t > /dev/null 2>&1; then
+    for file in "${changed[@]}"; do
+      rm -f "${file}.previous"
+    done
+    systemctl reload nginx.service 2> /dev/null || true
+    echo "Applied the web server settings"
+  else
+    for file in "${changed[@]}"; do
+      if [[ -f ${file}.previous ]]; then mv "${file}.previous" "${file}"; else rm -f "${file}"; fi
+    done
+    echo "nginx refused the web server settings; the previous ones stay" >&2
     return 1
   fi
 }

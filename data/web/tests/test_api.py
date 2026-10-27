@@ -4,7 +4,7 @@ import re
 import pytest
 
 from crassostrea.extensions import db
-from crassostrea.models import Admin, ApiKey, Domain, MailboxUser
+from crassostrea.models import Admin, ApiKey, Domain, MailboxUser, set_setting
 
 from conftest import make_api_key
 
@@ -69,7 +69,8 @@ def test_invalid_key_reported_and_throttled(app, client, fake_redis):
     pubsub = fake_redis.pubsub()
     pubsub.subscribe("F2B_CHANNEL")
     pubsub.get_message()
-    app.config["LOGIN_MAX_FAILURES"] = 2
+    set_setting("login_max_failures", 2)
+    db.session.commit()
     for _ in range(2):
         assert client.get("/api/v1/admins", headers={"X-API-Key": "sfk_wrong"},
                           environ_base={"REMOTE_ADDR": "198.51.100.9"}).status_code == 401

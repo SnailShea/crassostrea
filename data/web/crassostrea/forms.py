@@ -275,6 +275,21 @@ class AlertForm(FlaskForm):
     alert_backup_hours = IntegerField("No backup for (hours)", validators=[InputRequired(), NumberRange(1, 720)])
 
 
+class WatchdogForm(FlaskForm):
+    watchdog_notify_email = TextAreaField("Recipients", validators=[Optional(), Length(max=5000)])
+    watchdog_notify_webhook = StringField("Webhook URL", validators=[Optional(), Length(max=500)])
+    watchdog_notify_webhook_body = TextAreaField("Webhook body (JSON)", validators=[Optional(), Length(max=2000)])
+    watchdog_subject = StringField("Subject", validators=[InputRequired(), Length(max=100)])
+    watchdog_notify_start = BooleanField("When the watchdog starts")
+    watchdog_notify_ban = BooleanField("When netfilter bans an address (with whois)")
+
+
+class UpdateChannelForm(FlaskForm):
+    update_channel = SelectField("update.sh moves to", choices=[
+        ("release", "The newest release"), ("main", "The newest commit of a branch")])
+    update_branch = StringField("Branch", validators=[InputRequired(), Length(max=100)])
+
+
 class JournalForm(FlaskForm):
     journal_address = StringField("Archive address", validators=[Optional(), Length(max=320)])
     journal_inbound = BooleanField("Inbound mail")
@@ -329,6 +344,20 @@ class GlobalSettingsForm(FlaskForm):
         ("off", "Accept"), ("defer", "Defer (450, the host may retry)"), ("reject", "Reject (550)")])
     admin_allowed_networks = TextAreaField("Administrator access from", validators=[Optional(), Length(max=20000)])
     timezone = SelectField("Time zone", validate_choice=False)
+    session_lifetime_minutes = IntegerField("Logins last (minutes)",
+                                            validators=[InputRequired(), NumberRange(5, 7 * 24 * 60)])
+    login_max_failures = IntegerField("Failed logins per address", validators=[InputRequired(), NumberRange(1, 1000)])
+    login_max_account_failures = IntegerField("Failed logins per account",
+                                              validators=[InputRequired(), NumberRange(1, 10000)])
+    login_failure_window_minutes = IntegerField("Counted for (minutes)",
+                                                validators=[InputRequired(), NumberRange(1, 24 * 60)])
+    http_redirect = BooleanField("Redirect HTTP to HTTPS")
+    rspamd_ui_networks = TextAreaField("Rspamd UI access from", validators=[Optional(), Length(max=20000)])
+    trusted_proxies = TextAreaField("Reverse proxies in front of the gateway",
+                                    validators=[Optional(), Length(max=20000)])
+    spamhaus_dqs_key = PasswordField("Spamhaus DQS key", validators=[Optional(), Length(max=64)])
+    spamhaus_dqs_remove = BooleanField("Remove the key")
+    postfix_log_lines = IntegerField("Postfix log lines kept", validators=[InputRequired(), NumberRange(100, 1_000_000)])
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -80,8 +80,8 @@ def test_block_lists(app, fake_redis, dns, zone, answer, blocked):
 
 
 def test_dqs_key(app, fake_redis, dns):
-    with open(app.config["CONF_FILE"], "w") as handle:
-        handle.write("SPAMHAUS_DQS_KEY=abc123\n")
+    set_setting("spamhaus_dqs_key", "abc123")
+    db.session.commit()
     with app.test_request_context():
         links.check("https://example.org/")
     assert "example.org.abc123.dbl.dq.spamhaus.net" in dns["queries"]

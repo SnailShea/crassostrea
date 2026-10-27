@@ -239,7 +239,9 @@ def test_settings_page_writes_the_limits(logged_in, app, config):
     form = {"greylist_score": "5", "add_header_score": "6", "reject_score": "12", "quarantine_retention_days": "14",
             "quarantine_max_size_mb": "10", "maillog_retention_days": "31", "max_message_size_mb": "20",
             "max_attachment_size_mb": "8", "audit_retention_days": "365", "digest_interval": "daily",
-            "digest_token_days": "7", "mailbox_invite_days": "7", "ptr_check": "off"}
+            "digest_token_days": "7", "mailbox_invite_days": "7", "ptr_check": "off",
+            "session_lifetime_minutes": "480", "login_max_failures": "10", "login_max_account_failures": "30",
+            "login_failure_window_minutes": "15", "postfix_log_lines": "9999", "http_redirect": "y"}
     assert logged_in.post("/settings/", data=form).status_code == 302
     # for Postfix (system/libexec/postfix-apply) and Rspamd (rspamd.local.lua)
     with open(f"{config['POSTFIX_DYNAMIC_DIR']}/message_size_limit") as handle:

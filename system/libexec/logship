@@ -3,7 +3,7 @@
 
 Replaces syslog-ng of the former Postfix containers:
   * every mail log line is pushed to the list POSTFIX_MAILLOG (web UI "Logs"),
-    trimmed to LOG_LINES entries
+    trimmed to the lines of the web UI's Settings (POSTFIX_LOG_LINES)
   * Postfix lines are published on F2B_CHANNEL, where netfilter matches them
     against its ban rules (F2B_REGEX)
   * recipients Postfix refused because they do not exist are reported to the
@@ -36,6 +36,9 @@ IGNORE = re.compile(r"overriding earlier entry|TLS SNI from checks\.mailcow\.ema
 UNSAFE = re.compile(r"[\x00-\x1f\x7f/]")
 TLSPOL_UNIT = "crassostrea-postfix-tlspol.service"
 TRIM_EVERY = 100
+# Lines kept: written by the web UI (services/serverconf.py)
+LOG_LINES_KEY = "POSTFIX_LOG_LINES"
+DEFAULT_LOG_LINES = 9999
 # smtpd refusing a recipient that does not exist: the recipient list or a
 # directory ("User unknown in relay recipient table"), or the destination
 # server's verification ("undeliverable address: ..."). Permanent (5xx) only.
@@ -156,9 +159,17 @@ def journal_command(state_dir):
     return command + ["SYSLOG_FACILITY=2", "+", "_SYSTEMD_UNIT=" + TLSPOL_UNIT]
 
 
+def log_lines(client):
+    """The lines to keep: the web UI's setting, or the default."""
+    try:
+        value = int(client.get(LOG_LINES_KEY) or DEFAULT_LOG_LINES)
+    except (redis.RedisError, ValueError):
+        value = DEFAULT_LOG_LINES
+    return max(value, 1)
+
+
 def main():
     state_dir = os.environ.get("STATE_DIRECTORY", "/var/lib/crassostrea-logship")
-    max_lines = max(int(os.environ.get("LOG_LINES", "9999")), 1)
     host = os.environ.get("CRASSOSTREA_HOSTNAME", "") if os.environ.get("HA_NODES", "").strip() else ""
     client = redis.Redis(host=os.environ.get("REDIS_HOST", "127.0.0.1"),
                          port=int(os.environ.get("REDIS_PORT_INTERNAL", "6379")),
@@ -180,7 +191,7 @@ def main():
             pipe.publish("F2B_CHANNEL", UNSAFE.sub("_", text(entry.get("MESSAGE"))))
         pushed += 1
         if pushed % TRIM_EVERY == 0:
-            pipe.ltrim("POSTFIX_MAILLOG", 0, max_lines - 1)
+            pipe.ltrim("POSTFIX_MAILLOG", 0, log_lines(client) - 1)
         pipe.execute()
         event = refused(entry)
         if event is not None:

@@ -4,7 +4,7 @@ import pytest
 
 from crassostrea import create_app
 from crassostrea.extensions import db
-from crassostrea.models import Admin
+from crassostrea.models import Admin, get_setting, set_setting
 
 
 @pytest.mark.parametrize("path", ["/", "/domains/", "/quarantine/", "/lists/", "/settings/", "/admins/",
@@ -21,12 +21,17 @@ def test_initial_admin_and_login(client):
     assert response.headers["Location"] == "/"
 
 
+def _limit(key, value):
+    set_setting(key, value)
+    db.session.commit()
+
+
 def test_failed_login_is_reported_to_netfilter_and_throttled(app, client, fake_redis):
     pubsub = fake_redis.pubsub()
     pubsub.subscribe("F2B_CHANNEL")
     pubsub.get_message()
 
-    app.config["LOGIN_MAX_FAILURES"] = 3
+    _limit("login_max_failures", 3)
     for _ in range(3):
         response = client.post("/login", data={"username": "admin", "password": "wrong"},
                                environ_base={"REMOTE_ADDR": "198.51.100.7"})
@@ -42,7 +47,7 @@ def test_failed_login_is_reported_to_netfilter_and_throttled(app, client, fake_r
 
 
 def test_failed_logins_are_throttled_per_account_across_ips(app, client):
-    app.config["LOGIN_MAX_ACCOUNT_FAILURES"] = 3
+    _limit("login_max_account_failures", 3)
     for i in range(3):
         client.post("/login", data={"username": "Admin", "password": "wrong"},
                     environ_base={"REMOTE_ADDR": f"198.51.100.{i}"})
@@ -57,7 +62,7 @@ def test_failed_logins_are_throttled_per_account_across_ips(app, client):
 
 
 def test_successful_login_resets_account_failures(app, client, fake_redis):
-    app.config["LOGIN_MAX_ACCOUNT_FAILURES"] = 3
+    _limit("login_max_account_failures", 3)
     for i in range(2):
         client.post("/login", data={"username": "admin", "password": "wrong"},
                     environ_base={"REMOTE_ADDR": f"198.51.100.{i}"})
@@ -123,7 +128,7 @@ def _age_login(client, seconds):
 
 
 def test_login_ends_after_its_lifetime(app, logged_in):
-    lifetime = app.permanent_session_lifetime.total_seconds()
+    lifetime = get_setting("session_lifetime_minutes") * 60
     _age_login(logged_in, lifetime - 60)
     assert logged_in.get("/").status_code == 200
     _age_login(logged_in, 120)
@@ -136,7 +141,7 @@ def test_login_ends_after_its_lifetime(app, logged_in):
 
 def test_activity_does_not_extend_a_login(app, logged_in):
     """Live pages request updates all the time; the login still ends."""
-    lifetime = app.permanent_session_lifetime.total_seconds()
+    lifetime = get_setting("session_lifetime_minutes") * 60
     # a margin: a slow request must not end the login before the second step
     _age_login(logged_in, lifetime - 30)
     logged_in.get("/queue/", headers={"X-Live-Fragment": "1"})
@@ -151,7 +156,7 @@ def test_session_without_login_time_is_ended(logged_in):
 
 
 def test_a_new_login_starts_a_new_lifetime(app, client, logged_in):
-    _age_login(logged_in, app.permanent_session_lifetime.total_seconds() + 1)
+    _age_login(logged_in, get_setting("session_lifetime_minutes") * 60 + 1)
     assert logged_in.get("/").status_code == 302
     logged_in.post("/login", data={"username": "admin", "password": "initial-password"})
     assert logged_in.get("/").status_code == 200

@@ -215,7 +215,7 @@ check_spamhaus() {
   if [[ ${response} == 503 ]]; then
     warn "The AS of this server is blocked by Spamhaus. Create a free Data Query Service account at"
     warn "https://www.spamhaus.com/free-trial/sign-up-for-a-free-data-query-service-account and set"
-    warn "SPAMHAUS_DQS_KEY in ${SF_CONF}; otherwise the Spamhaus blocklists stay disabled."
+    warn "enter the key in the web UI (Settings -> General, Scanning); otherwise the Spamhaus blocklists stay disabled."
   fi
 }
 
@@ -253,15 +253,6 @@ WEB_SECURE_COOKIES=y
 # Rspamd controller password, used by the web UI and for the Rspamd UI at /rspamd/
 RSPAMD_PASSWORD=$(random_string 28)
 
-# Failed attempts within 15 minutes before further ones are refused, per
-# client IP (logins and API keys) and per account (logins)
-#WEB_LOGIN_MAX_FAILURES=10
-#WEB_LOGIN_MAX_ACCOUNT_FAILURES=30
-
-# Seconds after which a login ends, however active it is (closing the
-# browser ends it earlier)
-#WEB_SESSION_LIFETIME=28800
-
 # ------------------------------
 # Database (MariaDB) and Valkey
 # ------------------------------
@@ -279,17 +270,8 @@ HTTP_PORT=80
 HTTP_BIND=
 HTTPS_PORT=443
 HTTPS_BIND=
-
-# Redirect HTTP connections to HTTPS - y/n
-HTTP_REDIRECT=y
-
-# Comma separated list of reverse proxies in front of nginx (their
-# X-Forwarded-For header is trusted), e.g. TRUSTED_PROXIES=192.0.2.10
-TRUSTED_PROXIES=
-
-# Comma separated networks allowed to open the Rspamd UI at /rspamd/, e.g.
-# RSPAMD_UI_ALLOW=192.0.2.0/24,2001:db8::/64 - empty allows every address
-RSPAMD_UI_ALLOW=
+# The HTTP to HTTPS redirect, the networks of the Rspamd UI and trusted
+# reverse proxies are set in the web UI (Settings -> General, Web server).
 
 # IP families on the network interface - true/false, at least one; loopback
 # keeps both. Off: the host has no address of that family (NetworkManager)
@@ -335,12 +317,8 @@ SKIP_CLAMD=${SKIP_CLAMD}
 
 # Skip Olefy macro scanner for Office documents - y/n
 SKIP_OLEFY=n
-
-# Spamhaus Data Query Service Key
-# Optional: Leave empty for none
-# Enter your key here if you are using a blocked ASN (OVH, AWS, Cloudflare e.g) for the unregistered Spamhaus Blocklist.
-# If empty, it will completely disable Spamhaus blocklists if it detects that you are running on a server using a blocked AS.
-SPAMHAUS_DQS_KEY=
+# The Spamhaus Data Query Service key, needed on networks the public
+# Spamhaus mirrors refuse, is set in the web UI (Settings -> General, Scanning).
 
 # Make the local unbound the system resolver (/etc/resolv.conf). DNS
 # blocklists refuse queries from public resolvers - y/n
@@ -356,31 +334,11 @@ HAPROXY_LISTENER=n
 # Enable the watchdog (crassostrea-watchdog) to restart unhealthy services
 USE_WATCHDOG=y
 
-# Send watchdog notifications by mail (sent from watchdog@CRASSOSTREA_HOSTNAME)
-# Multiple rcpts allowed, NO quotation marks, NO spaces
-#WATCHDOG_NOTIFY_EMAIL=a@example.com,b@example.com,c@example.com
-#WATCHDOG_NOTIFY_EMAIL=
-
-# Send notifications to a webhook URL that receives a POST request with the content type "application/json".
-#WATCHDOG_NOTIFY_WEBHOOK=https://discord.com/api/webhooks/XXXXXXXXXXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-# JSON body included in the webhook POST request. Needs to be in single quotes.
-# Following variables are available: SUBJECT, BODY
-#WATCHDOG_NOTIFY_WEBHOOK_BODY='{"username": "Crassostrea Watchdog", "content": "**\${SUBJECT}**\n\${BODY}"}'
-
-# Notify about banned IP (includes whois lookup)
-WATCHDOG_NOTIFY_BAN=n
-
-# Send a notification when the watchdog is started.
-WATCHDOG_NOTIFY_START=y
-
-# Subject for watchdog mails. Defaults to "Watchdog ALERT" followed by the error message.
-#WATCHDOG_SUBJECT="Watchdog ALERT"
+# Its notices (mail, webhook) are set in the web UI (Settings -> Alerts &
+# export).
 
 # Enable watchdog verbose logging
 WATCHDOG_VERBOSE=n
-
-# Max lines of the mail log kept for the web UI
-LOG_LINES=9999
 
 # ------------------------------
 # Documentation
@@ -395,9 +353,6 @@ DOCS_ENABLED=${DOCS_ENABLED:-n}
 DOCS_SOURCE=${DOCS_SOURCE:-}
 # Branch or tag of a git URL (empty: its default branch)
 DOCS_REF=
-# What update.sh installs: release (the newest release, a tag vX.Y.Z) or
-# main (the newest commit of the branch, for development and testing)
-UPDATE_CHANNEL=release
 
 # ------------------------------
 # High availability (cluster)

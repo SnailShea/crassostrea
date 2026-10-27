@@ -30,7 +30,7 @@ from flask import current_app
 
 from ..extensions import db
 from ..models import Directory, MailLogEntry, QuarantineItem, StatBucket, get_setting, set_setting, utcnow
-from . import backups, certificates, cluster, mailer, postfix_control, store, sysconf, system
+from . import backups, certificates, cluster, mailer, postfix_control, store, system
 from .rspamd import RspamdError, client
 
 ALERT_STATE = "sf_alert_state"
@@ -386,17 +386,18 @@ def run_alerts(results=None, now=None):
 
 
 RELEASE_RE = re.compile(r"^v\d+\.\d+\.\d+$")
-UPDATE_CHANNELS = {"release": "the newest release", "main": "the newest commit of the branch"}
+UPDATE_CHANNELS = {"release": "The newest release", "main": "The newest commit of a branch"}
 
 
 def deployed():
     """The deployed version for the Monitoring page: {version, deployed_at,
-    release_url (a release exactly, else None), channel (update.sh)}."""
+    release_url (a release exactly, else None), channel and branch (update.sh)}."""
     name, deployed_at = cluster.version()
-    channel = sysconf.read(("UPDATE_CHANNEL",)).get("UPDATE_CHANNEL") or "release"
+    channel = get_setting("update_channel")
     url = f"{current_app.config['PROJECT_URL']}/releases/tag/{name}" if RELEASE_RE.match(name) else None
     return {"version": name or "unknown", "deployed_at": deployed_at, "release_url": url,
-            "channel": UPDATE_CHANNELS.get(channel, channel)}
+            "channel": channel, "channel_label": UPDATE_CHANNELS.get(channel, channel),
+            "branch": get_setting("update_branch")}
 
 
 def record_problems(results):

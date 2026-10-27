@@ -8,7 +8,8 @@
 
 <nav class="section-nav" aria-label="Sections of this page">
   <a href="#thresholds">Spam thresholds</a><a href="#limits">Messages</a><a href="#quarantine">Quarantine and digests</a>
-  <a href="#scanning">Scanning</a><a href="#administrators">Administrators</a><a href="#timezone">Time zone</a>
+  <a href="#scanning">Scanning</a><a href="#administrators">Administrators</a><a href="#webserver">Web server</a>
+  <a href="#timezone">Time zone</a>
 </nav>
 
 <form method="post" action="{{ url_for('settings.save') }}" data-dirty-warn>
@@ -33,6 +34,7 @@
       {{ field(form.max_message_size_mb, help="Larger messages are refused by Postfix. At most 100 MiB.") }}
       {{ field(form.max_attachment_size_mb, help="Messages with a larger attachment (decoded size) are rejected. 0: no limit.") }}
       {{ field(form.maillog_retention_days, help="At most 31 days.") }}
+      {{ field(form.postfix_log_lines, help="The Postfix lines of the Logs page, kept in Valkey for all nodes together. Older ones are dropped.") }}
     </div>
     <div class="card" id="quarantine">
       <div class="card-head"><h2>Quarantine and digests</h2>
@@ -56,6 +58,9 @@
       {{ check(form.virus_scanning, help="Off: messages are not checked by ClamAV (the attachment rules and hash lookups still apply). Rspamd follows within a minute.") }}
       {% if not clamav_installed %}<div class="alert warning">ClamAV is not installed on this gateway (SKIP_CLAMD): mail is not scanned for viruses either way.</div>{% endif %}
       {{ field(form.ptr_check, help="Most mail servers have a reverse DNS name; hosts without one are often infected machines. The relay networks and the addresses of the global allow list are exempt. Temporary DNS failures always defer.") }}
+      {{ field(form.spamhaus_dqs_key, autocomplete="new-password", placeholder="stored" if settings.spamhaus_dqs_key_set else "",
+               help="Free for low volumes at spamhaus.com (Data Query Service). Without a key Postfix and Rspamd ask the public mirrors, which refuse queries from cloud providers' networks; the Spamhaus lists are then left out. Leave empty to keep the stored key.") }}
+      {% if settings.spamhaus_dqs_key_set %}{{ check(form.spamhaus_dqs_remove) }}{% endif %}
     </div>
     <div class="card" id="administrators">
       <h2>Administrators</h2>
@@ -63,6 +68,26 @@
       {{ field(form.audit_retention_days, help="Changes made in the web UI and through the API (Audit log).") }}
       {{ field(form.admin_allowed_networks, rows=4, placeholder="192.0.2.0/24\n2001:db8::/48",
                help="Networks or addresses, one per line. Empty: any. Your address is " ~ client_ip ~ ". Mailbox users and API keys are not affected; the command flask admin-networks --clear on the server undoes a lock-out.") }}
+      <h3>Sign-in</h3>
+      {{ field(form.session_lifetime_minutes, help="Administrators and mailbox users log in again after this time, however active they are.") }}
+      <div class="form-row">
+        {{ field(form.login_max_failures) }}
+        {{ field(form.login_max_account_failures) }}
+        {{ field(form.login_failure_window_minutes) }}
+      </div>
+      <p class="muted">More failed logins than this from one address, or for one account from any address, block
+        further attempts until the time has passed. Repeated failures from an address also lead to a ban by
+        netfilter (Bans page).</p>
+    </div>
+    <div class="card" id="webserver">
+      <h2>Web server</h2>
+      {{ check(form.http_redirect, help="Requests on the HTTP port go to HTTPS. The ACME challenges of Let's Encrypt are answered either way.") }}
+      {{ field(form.rspamd_ui_networks, rows=3, placeholder="192.0.2.0/24\n2001:db8::/48",
+               help="Networks or addresses that may open the Rspamd UI at /rspamd/, one per line. Empty: any (it has its own password).") }}
+      {{ field(form.trusted_proxies, rows=3, placeholder="192.0.2.10",
+               help="Only with a reverse proxy or load balancer in front of the web interface: its addresses, whose X-Forwarded-For header gives the client's address (logins, bans, administrator networks). Empty: none.") }}
+      <p class="muted">nginx applies these within seconds on every node; a value it refuses keeps the previous
+        configuration (journalctl -u crassostrea-nginx).</p>
     </div>
     <div class="card" id="timezone">
       <h2>Time zone</h2>

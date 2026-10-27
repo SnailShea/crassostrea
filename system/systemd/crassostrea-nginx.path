@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: apply the web server settings of the web UI
+
+[Path]
+# Written by the web UI's sync (atomic rename) on every node
+PathChanged=/var/lib/crassostrea/web/web-access
+Unit=crassostrea-nginx.service
+
+[Install]
+WantedBy=multi-user.target

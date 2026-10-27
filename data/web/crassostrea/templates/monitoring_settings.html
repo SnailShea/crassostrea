@@ -81,4 +81,28 @@
     <button type="submit" class="btn" formaction="{{ url_for('monitoring.test_alerts') }}">Send a test alert</button>
   </div>
 </form>
+
+<form method="post" action="{{ url_for('monitoring.save_watchdog') }}" class="card" id="watchdog">
+  {{ watchdog_form.csrf_token }}
+  <h2>Watchdog notices</h2>
+  <p class="muted">The watchdog checks the services every few minutes and restarts the ones that fail. It sends
+    its notices from <span class="mono">watchdog@{{ hostname }}</span> directly to the recipients' mail servers,
+    so they arrive also while this gateway's mail flow is broken.</p>
+  <div class="grid-2">
+    <div>
+      {{ field(watchdog_form.watchdog_notify_email, rows=2, placeholder="ops@example.com",
+               help="One per line. Empty: no mail.") }}
+      {{ field(watchdog_form.watchdog_subject, help="Followed by the service, e.g. Watchdog ALERT: rspamd-crassostrea.") }}
+      {{ check(watchdog_form.watchdog_notify_start) }}
+      {{ check(watchdog_form.watchdog_notify_ban) }}
+    </div>
+    <div>
+      {{ field(watchdog_form.watchdog_notify_webhook, placeholder="https://chat.example.com/hooks/…",
+               help="Receives a POST with this body (application/json). Empty: no webhook.") }}
+      {{ field(watchdog_form.watchdog_notify_webhook_body, rows=3,
+               help="${SUBJECT} and ${BODY} are replaced with the notice.") }}
+    </div>
+  </div>
+  <div class="actions"><button type="submit" class="btn primary">Save</button></div>
+</form>
 {% endblock %}

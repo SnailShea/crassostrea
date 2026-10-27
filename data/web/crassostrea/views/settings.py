@@ -20,12 +20,13 @@ def _branding_form():
         "default_accent": not brand["accent"], "brand_footer": brand["footer"], "brand_theme": brand["theme"]})
 
 
-def _render(form):
+def _render(form, settings=None):
     overrides = Domain.query.filter(db.or_(Domain.reject_score.isnot(None), Domain.add_header_score.isnot(None),
                                            Domain.greylist_score.isnot(None))).count()
     return render_template("settings.html", form=form, overrides=overrides, digest_sender=digest.sender_address(),
                            clamav_installed=_clamav_installed(), client_ip=request.remote_addr,
-                           system_zone=timezone.system_zone(), zone_status=timezone.status())
+                           system_zone=timezone.system_zone(), zone_status=timezone.status(),
+                           settings=settings or filters.get_settings())
 
 
 def _clamav_installed():
@@ -56,7 +57,13 @@ def save():
     if not form.validate_on_submit():
         return _render(form), 400
     try:
-        values = {key: getattr(form, key).data for key in filters.SETTINGS}
+        values = {key: getattr(form, key).data for key in filters.SETTINGS if key != "spamhaus_dqs_key"}
+        # an empty key field keeps the stored key
+        if form.spamhaus_dqs_remove.data:
+            values["spamhaus_dqs_key"] = ""
+        elif form.spamhaus_dqs_key.data:
+            values["spamhaus_dqs_key"] = form.spamhaus_dqs_key.data
+        previous = filters.get_settings()
         stored = filters.update_settings(**values)
         adminaccess.check_own_address(stored["admin_allowed_networks"], request.remote_addr)
     except ServiceError as exc:
@@ -71,6 +78,13 @@ def save():
     # size limits are files for Postfix and Rspamd
     sync_all()
     flash("Settings saved. Rspamd applies new thresholds and limits within a minute.", "success")
+    if any(stored[key] != previous[key] for key in ("http_redirect", "rspamd_ui_networks", "trusted_proxies")):
+        flash("nginx applies the web server settings within seconds, on every cluster node.", "info")
+    if values.get("spamhaus_dqs_key"):
+        flash("Postfix and Rspamd query the Spamhaus DQS zones of this key within seconds.", "info")
+    elif previous["spamhaus_dqs_key_set"] and not stored["spamhaus_dqs_key_set"]:
+        flash("Postfix and Rspamd query the public Spamhaus mirrors again within seconds (unless this server's "
+              "network is refused by them).", "info")
     if values["timezone"] and values["timezone"] != timezone.system_zone():
         flash(f"The servers switch to the time zone {values['timezone']} and restart their services: this node "
               "now, the other nodes of a cluster at their next sync.", "info")

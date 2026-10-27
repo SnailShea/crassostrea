@@ -1,0 +1,10 @@
+[Unit]
+Description=Crassostrea: apply the Spamhaus DQS key of the web UI
+
+[Path]
+# Written by the web UI's sync (atomic rename) on every node
+PathChanged=/var/lib/crassostrea/web/spamhaus
+Unit=crassostrea-spamhaus.service
+
+[Install]
+WantedBy=multi-user.target

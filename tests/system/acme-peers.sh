@@ -27,11 +27,12 @@ http {
 }
 EOF
   cp "${ROOT[$n]}"/etc/crassostrea/ssl/*.pem "${N}/ssl/"
-  cp "${ROOT[$n]}/etc/nginx/crassostrea-server-names.conf" "${N}/server-names.conf"
+  # the server names and the web UI's web server settings (system/lib/nginx.sh)
+  cp "${ROOT[$n]}"/etc/nginx/crassostrea-*.conf "${N}/"
   # each node listens on its own address here
   sed -e "s#/etc/crassostrea/ssl#${N}/ssl#g" -e "s#/var/log/nginx#${N}/logs#g" \
       -e "s#/var/lib/crassostrea/acme-challenge#${N}/acme#g" \
-      -e "s#/etc/nginx/crassostrea-server-names.conf#${N}/server-names.conf#g" \
+      -e "s#/etc/nginx/crassostrea-#${N}/crassostrea-#g" \
       -e "s#/usr/local/share/crassostrea/docs/#${N}/docs/#g" \
       -e "s#listen 80\([ ;]\)#listen 10.0.0.${n}:80\1#" \
       -e "s#listen 443 #listen 10.0.0.${n}:443 #" \
@@ -58,6 +59,24 @@ check "HTTPS, another name: 404" "[[ \$(status --resolve other.example.com:443:1
 check "HTTPS, an address: 404" "[[ \$(status https://10.0.0.1/) == 404 ]]"
 check "HTTPS, the node's name: the web UI" \
   "[[ \$(status --resolve mx1.example.com:443:10.0.0.1 https://mx1.example.com/) == 502 ]]"
+check "HTTPS, the Rspamd UI: open to every address by default" \
+  "[[ \$(status --resolve mx1.example.com:443:10.0.0.1 https://mx1.example.com/rspamd/) == 502 ]]"
+
+# The web server settings of the web UI, as nginx-apply writes them on mx2
+N=${WORK}/acme2
+echo "default 0;" > "${N}/crassostrea-https-redirect.conf"
+printf 'allow 192.0.2.1;\ndeny all;\n' > "${N}/crassostrea-rspamd-access.conf"
+printf 'set_real_ip_from 10.0.0.0/8;\nreal_ip_header X-Forwarded-For;\nreal_ip_recursive on;\n' \
+  > "${N}/crassostrea-real-ip.conf"
+"${NGINX}" -c "${N}/nginx.conf" -p "${N}" -e "${N}/logs/error.log" -s reload || echo "FAIL nginx 2 does not reload"
+sleep 1
+check "no redirect: HTTP serves the web UI" "[[ \$(status -H 'Host: mx2.example.com' http://10.0.0.2/) == 502 ]]"
+check "no redirect: ACME challenges still served" "[[ \$(get 10.0.0.2 tok2) == token-from-mx2 ]]"
+check "the Rspamd UI: refused outside its networks" \
+  "[[ \$(status --resolve mx2.example.com:443:10.0.0.2 https://mx2.example.com/rspamd/) == 403 ]]"
+check "the Rspamd UI: open to its networks (behind a trusted proxy)" \
+  "[[ \$(status -H 'X-Forwarded-For: 192.0.2.1' --resolve mx2.example.com:443:10.0.0.2 https://mx2.example.com/rspamd/) == 502 ]]"
+check "a trusted proxy's client address is logged" "grep -q '^192.0.2.1 ' ${N}/logs/access.log"
 
 # A cluster of one node has no peers: nginx must accept its configuration
 # (it refuses an upstream without servers)
@@ -65,7 +84,7 @@ S=${WORK}/acme-solo
 rm -rf "${S}"
 mkdir -p "${S}/logs" "${S}/tmp"
 sed -e "s#/etc/crassostrea/ssl#${NODES}/solo/etc/crassostrea/ssl#g" -e "s#/var/log/nginx#${S}/logs#g" \
-    -e "s#/etc/nginx/crassostrea-server-names.conf#${NODES}/solo/etc/nginx/crassostrea-server-names.conf#g" \
+    -e "s#/etc/nginx/crassostrea-#${NODES}/solo/etc/nginx/crassostrea-#g" \
     "${NODES}/solo/etc/nginx/conf.d/crassostrea.conf" > "${S}/site.conf"
 sed -e "s#${WORK}/acme1#${S}#g" -e "s#include ${S}/conf.d/\*.conf;#include ${S}/site.conf;#" \
     "${WORK}/acme1/nginx.conf" > "${S}/nginx.conf"

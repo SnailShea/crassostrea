@@ -6,7 +6,7 @@ rspamd (data/conf/rspamd/lua/rspamd.local.lua, link_protection.json)
 rewrites the links and stores each URL in Valkey as sf_link:<id> (id: the
 start of its SHA-256), kept link_protection_days. A click looks the URL up,
 checks its host against the administrators' block list and the domain block
-lists Spamhaus DBL (DQS with SPAMHAUS_DQS_KEY), SURBL and URIBL, and
+lists Spamhaus DBL (DQS with the key of Settings), SURBL and URIBL, and
 redirects, or shows a warning (with a way on if link_protection_allow_continue).
 Verdicts are cached for CACHE_SECONDS; clicks are kept in sf_link_clicks.
 Unknown ids get an error page: the gateway is no open redirector.
@@ -20,7 +20,7 @@ from urllib.parse import urlsplit
 from flask import current_app
 
 from ..models import Domain, get_setting
-from . import netcheck, store, sysconf
+from . import netcheck, store
 
 ID_RE = re.compile(r"^[0-9a-f]{24}$")
 LINK_PREFIX = "sf_link:"
@@ -64,7 +64,7 @@ def registered(host):
 
 
 def _blocklists():
-    key = sysconf.read(("SPAMHAUS_DQS_KEY",)).get("SPAMHAUS_DQS_KEY", "")
+    key = get_setting("spamhaus_dqs_key")
     dbl = f"{key}.dbl.dq.spamhaus.net" if re.match(r"^[A-Za-z0-9]+$", key) else "dbl.spamhaus.org"
     return [
         # 127.0.1.2-99: spam, phishing, malware, botnet; 100-199: abused legitimate sites;

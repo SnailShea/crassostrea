@@ -34,6 +34,8 @@ def config(tmp_path):
         "TIMEZONE_REQUEST": str(tmp_path / "timezone"),
         "TIMEZONE_STATUS": str(tmp_path / "timezone-status.json"),
         "LOCALTIME": str(tmp_path / "localtime"),
+        "WEB_ACCESS_REQUEST": str(tmp_path / "web-access"),
+        "SPAMHAUS_REQUEST": str(tmp_path / "spamhaus"),
         "CONF_FILE": str(tmp_path / "crassostrea.conf"),
         "TLS_REQUEST": str(tmp_path / "tls-request.json"),
         "TLS_UPLOAD_DIR": str(tmp_path / "tls-upload"),

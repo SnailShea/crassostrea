@@ -1,0 +1,6 @@
+[Unit]
+Description=Crassostrea: apply the Spamhaus DQS key of the web UI to Postfix and Rspamd
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/spamhaus-apply

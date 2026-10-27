@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Applies the web server settings of the web UI (Settings -> General, Web server):
+# crassostrea-nginx.service, started by crassostrea-nginx.path when the web
+# UI's sync writes NGINX_ACCESS_SETTINGS, on every cluster node. Rewrites the
+# files nginx includes for them (system/lib/nginx.sh, the same that
+# system/configure.sh writes) and reloads nginx; a value nginx refuses keeps
+# the previous files. The web UI runs unprivileged: every network is checked
+# again here.
+set -o pipefail
+
+SF_LIB=${SF_LIB:-/usr/local/lib/crassostrea}
+
+# shellcheck source=../lib/nginx.sh
+source "${SF_LIB}/lib/nginx.sh"
+
+[[ -f ${NGINX_ACCESS_SETTINGS} ]] || exit 0
+nginx_update_access

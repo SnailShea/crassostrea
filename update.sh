@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Updates the Crassostrea gateway:
-#   1. moves the git checkout to the newest release (UPDATE_CHANNEL=release,
-#      the default: the newest vX.Y.Z tag, never back to an older one) or
-#      fast-forwards it on its branch (UPDATE_CHANNEL=main); --skip-git skips
-#      this. Also fetches the documentation's repository if it is deployed.
+#   1. moves the git checkout to the newest release (channel "release", the
+#      default: the newest vX.Y.Z tag, never back to an older one) or
+#      fast-forwards it on its branch (channel "main"), as chosen in the web UI
+#      (Monitoring -> Version); --skip-git skips this. Also fetches the
+#      documentation's repository if it is deployed.
 #   2. runs system/install.sh: packages, Python packages, pinned tools,
 #      deployment and configuration, restart of the services
 set -o pipefail
@@ -27,7 +28,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)
       echo "Usage: $0 [--channel release|main] [--skip-git] [--force]"
       echo "  --channel   this time: the newest release (release) or the newest commit of the"
-      echo "              branch (main) instead of UPDATE_CHANNEL of crassostrea.conf"
+      echo "              branch (main) instead of the channel of the web UI (Monitoring)"
       echo "  --skip-git  do not take anything from the git remote"
       echo "  --force     do not ask for confirmation"
       exit 0
@@ -40,9 +41,20 @@ done
 [[ ${EUID} -eq 0 ]] || die "Please run as root"
 [[ -f ${SF_CONF} ]] || die "${SF_CONF} is missing, run ./setup.sh first."
 load_env_file "${SF_CONF}"
-CHANNEL=${CHANNEL:-${UPDATE_CHANNEL:-release}}
-[[ ${CHANNEL} == release || ${CHANNEL} == main ]] || die "UPDATE_CHANNEL must be release or main"
-[[ ${UPDATE_BRANCH:-main} =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]] || die "UPDATE_BRANCH is not a branch name"
+
+# A setting of the web UI (table settings), or its default: also when the
+# database cannot be reached (a cluster's witness has none)
+setting() {
+  local value
+  [[ ${DBNAME:-} =~ ^[A-Za-z0-9_]+$ ]] || { echo "$2"; return; }
+  value=$(mariadb --connect-timeout=5 -N -B "${DBNAME}" -e "SELECT value FROM settings WHERE \`key\` = '$1'" \
+    2> /dev/null)
+  echo "${value:-$2}"
+}
+CHANNEL=${CHANNEL:-$(setting update_channel release)}
+UPDATE_BRANCH=$(setting update_branch main)
+[[ ${CHANNEL} == release || ${CHANNEL} == main ]] || die "The update channel must be release or main"
+[[ ${UPDATE_BRANCH} =~ ^[A-Za-z0-9._][A-Za-z0-9._/-]*$ ]] || die "The update branch is not a branch name"
 
 if [[ ${FORCE} != y ]]; then
   read -r -p "Update and restart the Crassostrea gateway now? [y/N] " response
@@ -80,7 +92,7 @@ follow_releases() {
   latest=$(latest_release)
   if [[ -z ${latest} ]]; then
     warn "There is no release yet (no tag vX.Y.Z): the checkout stays at $(git_as_owner describe --always --tags)."
-    warn "Run with --channel main, or set UPDATE_CHANNEL=main, to follow the branch."
+    warn "Run with --channel main, or choose the main channel in the web UI (Monitoring), to follow the branch."
     return 0
   fi
   if [[ $(git_as_owner rev-parse HEAD) == "$(git_as_owner rev-parse "${latest}^{commit}")" ]]; then

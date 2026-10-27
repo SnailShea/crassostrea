@@ -5,6 +5,8 @@ from contextlib import contextmanager
 import redis
 from flask import current_app, g
 
+from ..models import get_setting
+
 # netfilter-crassostrea reads its ban rules from this key on every log message
 # (services/netfilter/main.py writes the same rules when the key is missing).
 F2B_REGEX = {
@@ -44,10 +46,9 @@ def _failure_limits(ip, account=None):
     """{redis key: limit}. Failures count per client IP and, for logins, per
     account as well, so guessing one password from many addresses is limited
     too (at the price that an attacker can lock an account for the window)."""
-    cfg = current_app.config
-    limits = {f"WEB_LOGIN_FAILURES:{ip}": cfg["LOGIN_MAX_FAILURES"]}
+    limits = {f"WEB_LOGIN_FAILURES:{ip}": get_setting("login_max_failures")}
     if account:
-        limits[f"WEB_LOGIN_FAILURES_ACCOUNT:{account.strip().lower()}"] = cfg["LOGIN_MAX_ACCOUNT_FAILURES"]
+        limits[f"WEB_LOGIN_FAILURES_ACCOUNT:{account.strip().lower()}"] = get_setting("login_max_account_failures")
     return limits
 
 
@@ -63,7 +64,7 @@ def report_auth_failure(message, ip, account=None):
         for key in _failure_limits(ip, account):
             count = r.incr(key)
             if count == 1:
-                r.expire(key, current_app.config["LOGIN_FAILURE_WINDOW"])
+                r.expire(key, get_setting("login_failure_window_minutes") * 60)
     except redis.RedisError as exc:
         current_app.logger.warning("cannot record authentication failure: %s", exc)
 

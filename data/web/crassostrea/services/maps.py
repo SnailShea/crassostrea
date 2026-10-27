@@ -26,7 +26,7 @@ from ..extensions import db
 from ..models import Domain, ListEntry, MailboxUser, RelayNetwork, get_setting
 from ..validators import sender_pattern_to_regex
 from . import (content_rules, dkim, dlp, filters, hashcheck, impersonation, links, outbound, ratelimits, reports,
-               store, timezone, user_reports)
+               serverconf, store, timezone, user_reports)
 from .accounts import SCORE_FIELDS, domain_scores, effective_scores
 
 HEADER = "# Managed by the Crassostrea web UI - manual changes will be overwritten\n"
@@ -200,6 +200,7 @@ def sync_all():
         ok = False
         app.logger.error("cannot write postfix maps to %s: %s", postfix_dir, exc)
     timezone.sync()
+    ok = serverconf.sync() and ok
     return ok
 
 

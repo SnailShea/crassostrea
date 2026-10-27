@@ -11,10 +11,41 @@ Notable changes of each release. The format follows
 
 Versions before 1.0.0 may still change incompatibly in a MINOR release; such
 changes are listed under **Changed** with what to do. A release is the git
-tag `vMAJOR.MINOR.PATCH`; gateways with `UPDATE_CHANNEL=release` move to it with
+tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 `update.sh`, and the GitHub workflow attaches the installation ISO to it.
 
 ## [Unreleased]
+
+### Added
+
+- **Settings → General: Sign-in** sets how long a login lasts and the failed
+  logins allowed per address and per account, and for how long (API
+  `session_lifetime_minutes`, `login_max_failures`,
+  `login_max_account_failures`, `login_failure_window_minutes`).
+- **Settings → General: Web server** sets the redirect from HTTP to HTTPS,
+  the networks of the Rspamd UI and the trusted reverse proxies, applied by
+  `crassostrea-nginx.service` on every node (API `http_redirect`,
+  `rspamd_ui_networks`, `trusted_proxies`).
+- **The Spamhaus DQS key** is entered under Settings → General, Scanning and
+  applied to Postfix and Rspamd by `crassostrea-spamhaus.service` on every
+  node (API `spamhaus_dqs_key`).
+- **Watchdog notices** (Settings → Alerts & export): recipients, webhook and
+  its body, subject, notices at start and for bans; the watchdog reads them
+  from Valkey for every notice (API `watchdog_*`).
+- **The update channel** is chosen on Monitoring → Version; `update.sh` reads
+  it from the database (API `update_channel`, `update_branch`).
+- The Postfix log lines kept for the Logs page are a setting (Settings →
+  General, Messages; API `postfix_log_lines`).
+
+### Changed
+
+- These settings are no longer read from `crassostrea.conf`:
+  `WEB_SESSION_LIFETIME`, `WEB_LOGIN_MAX_FAILURES`,
+  `WEB_LOGIN_MAX_ACCOUNT_FAILURES`, `WEB_LOGIN_FAILURE_WINDOW`,
+  `HTTP_REDIRECT`, `RSPAMD_UI_ALLOW`, `TRUSTED_PROXIES`, `SPAMHAUS_DQS_KEY`,
+  `LOG_LINES`, `WATCHDOG_NOTIFY_*`, `WATCHDOG_SUBJECT`, `UPDATE_CHANNEL` and
+  `UPDATE_BRANCH`. Enter their values in the web interface; lines left in the
+  file are ignored.
 
 ## [0.1.1] - 2026-10-26
 

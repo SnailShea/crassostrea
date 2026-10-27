@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Applies the Spamhaus DQS key of the web UI (Settings -> General, Scanning):
+# crassostrea-spamhaus.service, started by crassostrea-spamhaus.path when the
+# web UI's sync writes SPAMHAUS_SETTINGS, on every cluster node. Does what
+# system/configure.sh does with the key (system/lib/spamhaus.sh): Postfix's
+# sf_spamhaus_dnsbl and reply map, Rspamd's DQS rules, then reloads the two.
+# Without a key the public mirrors are used, unless they refuse this
+# server's network. The web UI runs unprivileged: the key is checked again
+# here (letters and digits).
+set -o pipefail
+
+SF_LIB=${SF_LIB:-/usr/local/lib/crassostrea}
+TEMPLATE=${SF_LIB}/rspamd/dqs-rbl.conf.template
+
+# shellcheck source=../lib/spamhaus.sh
+source "${SF_LIB}/lib/spamhaus.sh"
+
+[[ -f ${SPAMHAUS_SETTINGS} ]] || exit 0
+key=$(spamhaus_key)
+status=
+if [[ -z ${key} ]]; then
+  status=$(spamhaus_asn_status)
+  if [[ ${status} == 503 ]]; then
+    echo "No Spamhaus DQS key, and the public mirrors refuse this server's network: Spamhaus blocklists disabled" >&2
+  elif [[ ${status} != 200 ]]; then
+    echo "Cannot determine whether the public Spamhaus mirrors answer (HTTP ${status}): Spamhaus blocklists disabled" >&2
+  fi
+fi
+
+# replace FILE: the content of stdin, if it differs; keeps FILE.previous.
+# Returns 1 if nothing changed
+replace() {
+  local file=$1 tmp
+  tmp=$(mktemp "${file}.XXXXXX") || exit 1
+  cat > "${tmp}"
+  if [[ -f ${file} ]] && cmp -s "${tmp}" "${file}"; then
+    rm -f "${tmp}"
+    return 1
+  fi
+  [[ -f ${file} ]] && cp -a "${file}" "${file}.previous"
+  chmod 0644 "${tmp}"
+  mv "${tmp}" "${file}"
+  command -v restorecon > /dev/null && restorecon "${file}" > /dev/null 2>&1
+  return 0
+}
+
+# Postfix: main.cf has sf_spamhaus_dnsbl unless dns_blocklists.cf lists none
+postfix_changed=
+if replace "${SPAMHAUS_REPLY_MAP}" < <(spamhaus_reply_map "${key}"); then
+  rm -f "${SPAMHAUS_REPLY_MAP}.previous"
+  postfix_changed=y
+fi
+sites=$(spamhaus_postscreen "${key}" "${status}")
+if [[ -n $(postconf -n sf_spamhaus_dnsbl 2> /dev/null) && $(postconf -h sf_spamhaus_dnsbl) != "${sites}" ]]; then
+  postconf -e "sf_spamhaus_dnsbl=${sites}" || exit 1
+  postfix_changed=y
+fi
+if [[ -n ${postfix_changed} ]]; then
+  echo "Postfix: ${key:+the Spamhaus DQS zones}${key:-the public Spamhaus mirrors}"
+  if systemctl is-active --quiet postfix.service; then
+    postfix reload
+  fi
+fi
+
+# Rspamd: the DQS rules, if Rspamd accepts them
+if replace "${SPAMHAUS_RSPAMD_CONF}" < <(spamhaus_rspamd "${TEMPLATE}" "${key}"); then
+  if ! rspamadm configtest > /dev/null 2>&1; then
+    if [[ -f ${SPAMHAUS_RSPAMD_CONF}.previous ]]; then
+      mv -f "${SPAMHAUS_RSPAMD_CONF}.previous" "${SPAMHAUS_RSPAMD_CONF}"
+    fi
+    echo "Rspamd refused the Spamhaus DQS rules; the previous ones stay" >&2
+    exit 1
+  fi
+  rm -f "${SPAMHAUS_RSPAMD_CONF}.previous"
+  echo "Rspamd: ${key:+the Spamhaus DQS rules}${key:-no Spamhaus DQS rules}"
+  if systemctl is-active --quiet rspamd.service; then
+    systemctl reload rspamd.service
+  fi
+fi

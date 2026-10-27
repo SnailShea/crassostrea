@@ -1401,6 +1401,40 @@ def _settings_properties():
                                                   "line; empty: any. API keys are not affected"},
         "timezone": {"type": "string", "description": "IANA time zone of the servers and the web interface "
                                                       "(e.g. Europe/Berlin); empty: the system's, shown as UTC"},
+        "session_lifetime_minutes": {"type": "integer", "minimum": 5, "maximum": 10080,
+                                     "description": "A login of the web interface ends after this time, however "
+                                                    "active it is"},
+        "login_max_failures": {"type": "integer", "minimum": 1, "maximum": 1000,
+                               "description": "Failed logins from one address before further attempts are refused"},
+        "login_max_account_failures": {"type": "integer", "minimum": 1, "maximum": 10000,
+                                       "description": "Failed logins for one account, from any address"},
+        "login_failure_window_minutes": {"type": "integer", "minimum": 1, "maximum": 1440,
+                                         "description": "Failed logins count this long"},
+        "http_redirect": {"type": "boolean", "description": "nginx redirects HTTP to HTTPS (ACME challenges "
+                                                            "excepted)"},
+        "rspamd_ui_networks": {"type": "string", "description": "Networks or addresses that may open the Rspamd "
+                                                                "UI at /rspamd/, one per line; empty: any"},
+        "trusted_proxies": {"type": "string", "description": "Reverse proxies in front of nginx whose "
+                                                             "X-Forwarded-For header is trusted, one per line"},
+        "spamhaus_dqs_key": {"type": "string", "writeOnly": True, "pattern": "^[A-Za-z0-9]{0,64}$",
+                             "description": "Spamhaus Data Query Service key for Postfix and Rspamd; empty: the "
+                                            "public mirrors"},
+        "spamhaus_dqs_key_set": {"type": "boolean", "readOnly": True},
+        "postfix_log_lines": {"type": "integer", "minimum": 100, "maximum": 1000000,
+                              "description": "Lines of the Postfix log kept for the Logs page"},
+        "update_channel": {"type": "string", "enum": ["release", "main"],
+                           "description": "update.sh moves to the newest release or to the newest commit of "
+                                          "update_branch"},
+        "update_branch": {"type": "string", "description": "The branch of the main channel"},
+        "watchdog_notify_email": {"type": "string",
+                                  "description": "Recipients of the watchdog's notices, one per line"},
+        "watchdog_notify_webhook": {"type": "string", "description": "http(s) URL the notices are POSTed to"},
+        "watchdog_notify_webhook_body": {"type": "string",
+                                         "description": "JSON body of the webhook; ${SUBJECT} and ${BODY} are "
+                                                        "replaced"},
+        "watchdog_subject": {"type": "string", "description": "Subject of the notices, followed by the service"},
+        "watchdog_notify_start": {"type": "boolean", "description": "A notice when the watchdog starts"},
+        "watchdog_notify_ban": {"type": "boolean", "description": "A notice when netfilter bans an address"},
         "maillog_retention_days": {"type": "integer", "minimum": 1, "maximum": MAX_MAILLOG_DAYS},
         "max_message_size_mb": {"type": "integer", "minimum": 1, "maximum": MAX_MESSAGE_MB,
                                 "description": "Postfix refuses larger messages (inbound and outbound)"},

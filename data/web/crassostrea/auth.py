@@ -39,13 +39,13 @@ def load_user(user_id):
 
 @bp.before_app_request
 def expire_login():
-    """A login ends WEB_SESSION_LIFETIME seconds after it began, however active
-    the session is (live pages request updates all the time); closing the
-    browser ends it earlier. Sessions without a login time are ended."""
+    """A login ends the session lifetime of Settings after it began, however
+    active the session is (live pages request updates all the time); closing
+    the browser ends it earlier. Sessions without a login time are ended."""
     if "_user_id" not in session:
         return
     started = session.get("login_at")
-    lifetime = current_app.permanent_session_lifetime.total_seconds()
+    lifetime = get_setting("session_lifetime_minutes") * 60
     valid = isinstance(started, (int, float)) and not isinstance(started, bool)
     if valid and 0 <= time.time() - started < lifetime:
         return

@@ -6,7 +6,7 @@ import time
 import pytest
 
 from crassostrea.extensions import db
-from crassostrea.models import Admin, set_setting
+from crassostrea.models import Admin, get_setting, set_setting
 from crassostrea.services import twofactor
 
 from conftest import make_api_key
@@ -108,7 +108,7 @@ def test_wrong_codes_are_throttled(logged_in, app):
     secret, _ = _setup(logged_in)
     logged_in.post("/logout")
     _login(logged_in)
-    for _ in range(app.config["LOGIN_MAX_FAILURES"]):
+    for _ in range(get_setting("login_max_failures")):
         logged_in.post("/login/code", data={"code": "abcdef"})
     assert logged_in.post("/login/code", data={"code": _now_code(secret, 1)}).status_code == 429
 

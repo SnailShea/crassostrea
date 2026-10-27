@@ -32,7 +32,9 @@ SETTINGS_FORM = {"greylist_score": "5", "add_header_score": "6", "reject_score":
                  "quarantine_retention_days": "14", "quarantine_max_size_mb": "10", "maillog_retention_days": "14",
                  "max_message_size_mb": "25", "max_attachment_size_mb": "0", "audit_retention_days": "365",
                  "digest_interval": "daily", "digest_token_days": "7", "mailbox_invite_days": "7",
-                 "ptr_check": "off", "virus_scanning": "y"}
+                 "ptr_check": "off", "session_lifetime_minutes": "480", "login_max_failures": "10",
+                 "login_max_account_failures": "30", "login_failure_window_minutes": "15",
+                 "postfix_log_lines": "9999", "http_redirect": "y", "virus_scanning": "y"}
 
 
 @pytest.fixture

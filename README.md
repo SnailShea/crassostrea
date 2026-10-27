@@ -47,7 +47,7 @@ existing mail server. A Flask web interface manages it.
   also `/api/v1/protected-people`.
 - **Link protection** (Protection, per domain): the links of inbound mail point
   to `https://<hostname>/l/<id>` and are checked when clicked against the
-  Spamhaus DBL (DQS with `SPAMHAUS_DQS_KEY`), SURBL, URIBL and your own block
+  Spamhaus DBL (DQS with the key of Settings), SURBL, URIBL and your own block
   list, so a site that turns malicious after delivery is still caught; a
   click on a blocked link shows a warning (optionally with a way on).
   Signed or encrypted mail, outbound mail and exempt hosts are left alone,
@@ -77,7 +77,10 @@ existing mail server. A Flask web interface manages it.
   be turned off and on without reinstalling (Rspamd skips the check, clamd
   keeps running). Hosts without a PTR record can be accepted, deferred (450)
   or rejected (550) by Postfix; the relay networks and the global allow list's
-  addresses are exempt.
+  addresses are exempt. A Spamhaus Data Query Service key (free for low
+  volumes) makes Postfix and Rspamd query the DQS zones; without one they use
+  the public mirrors, which refuse cloud providers' networks
+  (`crassostrea-spamhaus.service` applies a change on every node).
 - **Outbound limits** (Outbound): how many recipients each sender of the relay
   networks may send to per minute, hour or day, with limits for single
   addresses or the senders of a domain (0: none). Rspamd counts them in Valkey
@@ -231,6 +234,15 @@ existing mail server. A Flask web interface manages it.
 - **Administrator networks** (Settings → General): administrator logins only
   from the networks you list; sessions from elsewhere end. Mailbox users and
   API keys are not affected; `flask admin-networks --clear` undoes a lock-out.
+- **Sign-in** (Settings → General): how long a login lasts (8 hours by
+  default, however active the session is), and the failed logins allowed per
+  client address (10) and per account from any address (30) within 15
+  minutes before further attempts are refused.
+- **Web server** (Settings → General): the redirect from HTTP to HTTPS (ACME
+  challenges excepted), the networks that may open the Rspamd UI at
+  `/rspamd/`, and the reverse proxies in front of the gateway whose
+  `X-Forwarded-For` is trusted. `crassostrea-nginx.service` applies them on
+  every node and keeps the previous configuration if nginx refuses a value.
 - **Time zone** (Settings → General): one IANA zone for the servers of every
   node (`timedatectl`, services restarted once) and the times the web
   interface shows; stored times stay UTC.
@@ -261,7 +273,9 @@ existing mail server. A Flask web interface manages it.
   Alert mail when deferred mail piles up or waits long, the certificate is
   about to expire, there is no recent backup, a directory does not
   synchronise or a service stopped (checked every 5 minutes, repeated daily,
-  and a notice when solved).
+  and a notice when solved). The watchdog's own notices (a service it
+  restarted, its start, bans) go by mail straight to the recipients' servers
+  and to a webhook (e.g. a chat), set on the same page.
 - **IP addressing** (Network → Hostname & IP, single gateway): the addresses, gateways and DNS
   servers of each network interface (NetworkManager; choose one if there are
   several), manual or automatic, and which IP families it uses. Either family,
@@ -385,7 +399,7 @@ data, see [High availability](#high-availability) (`setup.sh --ha`).
 
 Running `setup.sh` again is safe: an existing configuration is kept and the
 installation is brought up to date. `update.sh` moves the checkout to the
-newest release (a tag `vX.Y.Z`; `UPDATE_CHANNEL=main` in `crassostrea.conf`, or
+newest release (a tag `vX.Y.Z`; the main channel of Monitoring → Version, or
 `--channel main` once, follows the newest commit of the branch instead) and
 does the same. The Monitoring page shows the deployed version; the changes of
 each release are in [CHANGELOG.md](CHANGELOG.md). After editing `crassostrea.conf` or files in `data/conf/`, run
@@ -409,8 +423,13 @@ file it into a junk folder.
 
 ## Configuration reference
 
-All settings live in `/etc/crassostrea/crassostrea.conf` (`KEY=value` lines,
-read like a systemd `EnvironmentFile`). The most important ones:
+Everything about mail handling, sign-in, the web server's access rules, the
+Spamhaus key, the watchdog's notices and the update channel is set in the web
+interface (or the REST API) and kept in the database, the same on every
+cluster node. `/etc/crassostrea/crassostrea.conf` (`KEY=value` lines, read
+like a systemd `EnvironmentFile`) holds what the services need before the
+database answers, what differs per node, and what changes the installed
+packages or the listening ports:
 
 | Variable | Purpose |
 | --- | --- |
@@ -419,15 +438,12 @@ read like a systemd `EnvironmentFile`). The most important ones:
 | `WEB_SECRET_KEY` | Session signing key |
 | `RSPAMD_PASSWORD` | Rspamd controller password (web UI and the Rspamd UI at `/rspamd/`) |
 | `WEB_PUBLIC_URL` | Base URL in digest links (default `https://CRASSOSTREA_HOSTNAME`) |
-| `HTTP_REDIRECT`, `HTTP(S)_PORT`, `HTTP(S)_BIND`, `TRUSTED_PROXIES` | Web server and reverse proxy settings |
-| `RSPAMD_UI_ALLOW` | Networks allowed to open the Rspamd UI at `/rspamd/` (empty = everyone) |
+| `HTTP(S)_PORT`, `HTTP(S)_BIND` | Ports and addresses nginx listens on |
 | `ADDITIONAL_SAN` | Further names on the certificate; with the hostname and the host of `WEB_PUBLIC_URL` the only names nginx answers to (any other name or an IP address gets 404, ACME challenges excepted) |
-| `WEB_LOGIN_MAX_FAILURES`, `WEB_LOGIN_MAX_ACCOUNT_FAILURES` | Failed attempts within 15 minutes before further ones are refused: per client IP for logins and API keys (default 10), per account across all IPs for logins (default 30; reaching it locks the account for the rest of the window) |
 | `SKIP_CLAMD`, `SKIP_OLEFY` | Disable ClamAV or Olefy |
-| `SPAMHAUS_DQS_KEY` | Spamhaus Data Query Service key (needed on cloud ASNs) |
 | `ADDITIONAL_SAN`, `SKIP_LETS_ENCRYPT`, `ACME_DNS_*` | Certificates |
 | `HTTPS_TLS_MIN`, `SMTP_TLS_MIN` | Oldest TLS version of HTTPS and inbound SMTP: `1.2` (default), `1.1` or `1.0` |
-| `USE_WATCHDOG`, `WATCHDOG_NOTIFY_*` | Health monitoring and notifications |
+| `USE_WATCHDOG`, `WATCHDOG_VERBOSE` | The watchdog (health checks and restarts; its notices are set in the web UI) |
 | `MANAGE_RESOLVER` | Make the local unbound the system resolver (default `y`) |
 | `HAPROXY_LISTENER`, `HAPROXY_LISTENER_BIND` | PROXY protocol listener for an HAProxy in front of Postfix (default off, `127.0.0.1:10025`) |
 | `IPV4_ENABLED`, `IPV6_ENABLED` | IP families on the network interface (`true`/`false`, at least one): the host's addresses and Postfix, unbound and nginx; also on the IP addressing page |

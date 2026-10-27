@@ -151,7 +151,9 @@ def test_global_settings(logged_in):
     response = logged_in.post("/settings/", data={
         "greylist_score": "5", "add_header_score": "6", "reject_score": "6",
         "quarantine_retention_days": "30", "quarantine_max_size_mb": "20",
-        "digest_interval": "daily", "digest_token_days": "7", "mailbox_invite_days": "7", "ptr_check": "off"})
+        "digest_interval": "daily", "digest_token_days": "7", "mailbox_invite_days": "7", "ptr_check": "off",
+        "session_lifetime_minutes": "480", "login_max_failures": "10", "login_max_account_failures": "30",
+        "login_failure_window_minutes": "15", "postfix_log_lines": "9999", "http_redirect": "y"})
     assert response.status_code == 400
     response = logged_in.post("/settings/", data={
         "greylist_score": "5", "add_header_score": "6", "reject_score": "12",
@@ -159,7 +161,9 @@ def test_global_settings(logged_in):
         "maillog_retention_days": "14", "max_message_size_mb": "25", "max_attachment_size_mb": "0",
         "audit_retention_days": "365",
         "digest_interval": "weekly", "digest_token_days": "3", "digest_sender": "Filter@Example.com",
-        "mailbox_invite_days": "7", "ptr_check": "off"})
+        "mailbox_invite_days": "7", "ptr_check": "off",
+        "session_lifetime_minutes": "480", "login_max_failures": "10", "login_max_account_failures": "30",
+        "login_failure_window_minutes": "15", "postfix_log_lines": "9999", "http_redirect": "y"})
     assert response.status_code == 302
     assert get_setting("digest_interval") == "weekly" and get_setting("digest_token_days") == 3
     assert get_setting("digest_sender") == "filter@example.com"

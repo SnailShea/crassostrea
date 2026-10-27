@@ -9,7 +9,7 @@ import time
 import pytest
 
 from crassostrea.extensions import db
-from crassostrea.models import Directory, set_setting, utcnow
+from crassostrea.models import Directory, get_setting, set_setting, utcnow
 from crassostrea.services import mailer, monitoring, postfix_control, siem, system
 
 
@@ -225,12 +225,17 @@ def test_version_card(logged_in, config):
     page = logged_in.get("/monitoring/").get_data(as_text=True)
     assert '<dd class="mono">v0.3.1' in page
     assert 'href="https://github.com/SnailShea/crassostrea/releases/tag/v0.3.1"' in page
-    assert "the newest release" in page  # UPDATE_CHANNEL unset
+    assert '<option selected value="release">The newest release' in page
     # past a release, on the branch: no release notes
     with open(config["VERSION_FILE"], "w") as fh:
         fh.write("v0.3.1-4-g1a2b3c4d5e\n1800000000\n")
-    with open(config["CONF_FILE"], "w") as fh:
-        fh.write("UPDATE_CHANNEL=main\n")
+    response = logged_in.post("/monitoring/update-channel", data={"update-update_channel": "main",
+                                                                  "update-update_branch": "dev"})
+    assert response.status_code == 302 and response.headers["Location"].endswith("/monitoring/#version")
     page = logged_in.get("/monitoring/").get_data(as_text=True)
     assert "v0.3.1-4-g1a2b3c4d5e" in page and "releases/tag" not in page
-    assert "the newest commit of the branch" in page
+    assert '<option selected value="main">' in page and 'value="dev"' in page
+    assert (get_setting("update_channel"), get_setting("update_branch")) == ("main", "dev")
+    response = logged_in.post("/monitoring/update-channel", data={"update-update_channel": "main",
+                                                                  "update-update_branch": "-x"})
+    assert response.status_code == 400 and "must be a branch name" in response.get_data(as_text=True)

@@ -6,6 +6,7 @@ Functions raise ServiceError with a user facing message. Callers commit and
 then call maps.sync_all(), which writes the rspamd and Postfix maps.
 """
 import ipaddress
+import json
 import re
 
 from ..extensions import db
@@ -252,8 +253,16 @@ SETTINGS = ("greylist_score", "add_header_score", "reject_score", "quarantine_re
             "quarantine_max_size_mb", "quarantine_outbound", "maillog_retention_days", "max_message_size_mb",
             "max_attachment_size_mb", "require_admin_2fa", "audit_retention_days", "digest_interval",
             "digest_sender", "digest_token_days", "mailbox_auto_create", "mailbox_invite_days", "virus_scanning",
-            "ptr_check", "admin_allowed_networks", "timezone")
+            "ptr_check", "admin_allowed_networks", "timezone", "session_lifetime_minutes", "login_max_failures",
+            "login_max_account_failures", "login_failure_window_minutes", "http_redirect", "rspamd_ui_networks",
+            "trusted_proxies", "spamhaus_dqs_key", "postfix_log_lines")
 PTR_CHECKS = ("off", "defer", "reject")
+UPDATE_SETTINGS = ("update_channel", "update_branch")
+UPDATE_CHANNELS = ("release", "main")
+_WEBHOOK_RE = re.compile(r"^https?://[^\s\"'`\\]+$")
+_BRANCH_RE = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._/-]{0,99}$")
+WATCHDOG_SETTINGS = ("watchdog_notify_email", "watchdog_notify_webhook", "watchdog_notify_webhook_body",
+                     "watchdog_subject", "watchdog_notify_start", "watchdog_notify_ban")
 
 # Edited on the Backups and Outbound limits pages; the API's settings have all
 BACKUP_SETTINGS = ("backup_keep", "backup_include_mail_log", "backup_include_quarantine")
@@ -274,7 +283,7 @@ HASHCHECK_SETTINGS = ("hashcheck_mhr", "hashcheck_mhr_percent", "hashcheck_mhr_s
                       "hashcheck_mb_score", "hashcheck_vt_key", "hashcheck_vt_engines", "hashcheck_vt_score",
                       "hashcheck_vt_per_minute")
 # never returned: get_settings gives <key>_set instead
-SECRET_SETTINGS = ("hashcheck_mb_key", "hashcheck_vt_key")
+SECRET_SETTINGS = ("hashcheck_mb_key", "hashcheck_vt_key", "spamhaus_dqs_key")
 REPORT_SETTINGS = ("report_retention_days", "dmarc_send_reports")
 STATS_SETTINGS = ("stats_retention_days",)
 USER_REPORT_SETTINGS = ("user_reports_enabled", "user_reports_confirm", "user_reports_per_hour")
@@ -290,12 +299,13 @@ LINK_SETTINGS = ("link_protection_exempt_hosts", "link_protection_block_domains"
 ALL_SETTINGS = (SETTINGS + BACKUP_SETTINGS + OUTBOUND_SETTINGS + RATE_LIMIT_SETTINGS + ATTACHMENT_SETTINGS
                 + IMPERSONATION_SETTINGS
                 + LINK_SETTINGS + HASHCHECK_SETTINGS + REPORT_SETTINGS + STATS_SETTINGS + MONITORING_SETTINGS
-                + JOURNAL_SETTINGS + USER_REPORT_SETTINGS)
+                + JOURNAL_SETTINGS + USER_REPORT_SETTINGS + UPDATE_SETTINGS + WATCHDOG_SETTINGS)
 BOOLEAN_SETTINGS = ("quarantine_outbound", "require_admin_2fa", "backup_include_mail_log", "backup_include_quarantine",
                     "attachment_scan_archives", "attachment_block_encrypted", "attachment_outbound",
                     "link_protection_allow_continue", "hashcheck_mhr", "dmarc_send_reports", "siem_verify_tls",
                     "siem_mail_log", "siem_audit", "journal_inbound", "journal_outbound", "journal_rejected",
-                    "user_reports_enabled", "user_reports_confirm", "mailbox_auto_create", "virus_scanning")
+                    "user_reports_enabled", "user_reports_confirm", "mailbox_auto_create", "virus_scanning",
+                    "http_redirect", "watchdog_notify_start", "watchdog_notify_ban")
 MAX_EXTENSIONS = 500
 MAX_EXEMPT_SENDERS = 500
 _EXTENSION_RE = re.compile(r"^[a-z0-9_~$-]{1,32}$")
@@ -419,7 +429,8 @@ def update_settings(**changes):
                 "attachment_scan_archives", "attachment_block_encrypted", "attachment_outbound",
                 "link_protection_allow_continue", "hashcheck_mhr", "dmarc_send_reports", "siem_verify_tls",
                 "siem_mail_log", "siem_audit", "journal_inbound", "journal_outbound", "journal_rejected",
-                "user_reports_enabled", "user_reports_confirm", "mailbox_auto_create", "virus_scanning"):
+                "user_reports_enabled", "user_reports_confirm", "mailbox_auto_create", "virus_scanning",
+                "http_redirect", "watchdog_notify_start", "watchdog_notify_ban"):
         if key in changes:
             values[key] = int(_bool(changes[key], key))
     if "mailbox_invite_days" in changes:
@@ -431,6 +442,49 @@ def update_settings(**changes):
                                                          "admin_allowed_networks", allow_any=True)
     if "timezone" in changes:
         values["timezone"] = _timezone(changes["timezone"])
+    for key, low, high in (("session_lifetime_minutes", 5, 7 * 24 * 60), ("login_max_failures", 1, 1000),
+                           ("login_max_account_failures", 1, 10000), ("login_failure_window_minutes", 1, 24 * 60),
+                           ("postfix_log_lines", 100, 1_000_000)):
+        if key in changes:
+            values[key] = _int(changes[key], key, low, high)
+    for key in ("rspamd_ui_networks", "trusted_proxies"):
+        if key in changes:
+            values[key] = _network_list(changes[key], key, allow_any=True)
+    if "update_channel" in changes:
+        values["update_channel"] = _choice(changes["update_channel"], "update_channel", UPDATE_CHANNELS)
+    if "update_branch" in changes:
+        branch = changes["update_branch"].strip() if isinstance(changes["update_branch"], str) else None
+        if not branch or not _BRANCH_RE.match(branch) or ".." in branch:
+            raise ServiceError("update_branch must be a branch name", "update_branch")
+        values["update_branch"] = branch
+    if "watchdog_notify_email" in changes:
+        value = changes["watchdog_notify_email"] if changes["watchdog_notify_email"] is not None else ""
+        if not isinstance(value, str):
+            raise ServiceError("watchdog_notify_email must be text", "watchdog_notify_email")
+        values["watchdog_notify_email"] = "\n".join(sorted({
+            _normalized(v.normalize_email, item, "watchdog_notify_email") for item in re.split(r"[\s,;]+", value)
+            if item.strip()}))
+    if "watchdog_notify_webhook" in changes:
+        url = (changes["watchdog_notify_webhook"] or "").strip() if isinstance(
+            changes["watchdog_notify_webhook"], (str, type(None))) else None
+        if url is None or len(url) > 500 or (url and not _WEBHOOK_RE.match(url)):
+            raise ServiceError("watchdog_notify_webhook must be an http(s) URL without spaces",
+                               "watchdog_notify_webhook")
+        values["watchdog_notify_webhook"] = url
+    if "watchdog_notify_webhook_body" in changes:
+        body = _text(changes["watchdog_notify_webhook_body"], "watchdog_notify_webhook_body", 2000)
+        if body:
+            try:
+                json.loads(body.replace("${SUBJECT}", "").replace("${BODY}", ""))
+            except ValueError:
+                raise ServiceError("watchdog_notify_webhook_body must be JSON", "watchdog_notify_webhook_body") \
+                    from None
+        values["watchdog_notify_webhook_body"] = " ".join(body.split())
+    if "watchdog_subject" in changes:
+        subject = _text(changes["watchdog_subject"], "watchdog_subject", 100)
+        if not subject:
+            raise ServiceError("watchdog_subject cannot be empty", "watchdog_subject")
+        values["watchdog_subject"] = " ".join(subject.split())
     if "backup_keep" in changes:
         values["backup_keep"] = _int(changes["backup_keep"], "backup_keep", 1, 90)
     for key in ("impersonation_name_score", "impersonation_lookalike_score", "impersonation_spoof_score"):
@@ -449,7 +503,12 @@ def update_settings(**changes):
             if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 1000:
                 raise ServiceError(f"{key} must be a number from 0 to 1000", key)
             values[key] = float(value)
-    for key in SECRET_SETTINGS:
+    if "spamhaus_dqs_key" in changes:
+        value = (changes["spamhaus_dqs_key"] if changes["spamhaus_dqs_key"] is not None else "")
+        if not isinstance(value, str) or not re.match(r"^[A-Za-z0-9]{0,64}$", value.strip()):
+            raise ServiceError("spamhaus_dqs_key must be a key of letters and digits", "spamhaus_dqs_key")
+        values["spamhaus_dqs_key"] = value.strip()
+    for key in ("hashcheck_mb_key", "hashcheck_vt_key"):
         if key in changes:
             value = changes[key] if changes[key] is not None else ""
             if not isinstance(value, str) or len(value.strip()) > 200 or not re.match(r"^[\x21-\x7e]*$",

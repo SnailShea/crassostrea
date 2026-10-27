@@ -77,6 +77,11 @@ class Config:
     TIMEZONE_REQUEST = os.environ.get("TIMEZONE_REQUEST", "/var/lib/crassostrea/web/timezone")
     TIMEZONE_STATUS = os.environ.get("TIMEZONE_STATUS", "/var/lib/crassostrea/timezone/status.json")
     LOCALTIME = os.environ.get("LOCALTIME", "/etc/localtime")
+    # Settings applied by root services (services/serverconf.py): the web
+    # server's (system/libexec/nginx-apply), the Spamhaus DQS key
+    # (system/libexec/spamhaus-apply)
+    WEB_ACCESS_REQUEST = os.environ.get("WEB_ACCESS_REQUEST", "/var/lib/crassostrea/web/web-access")
+    SPAMHAUS_REQUEST = os.environ.get("SPAMHAUS_REQUEST", "/var/lib/crassostrea/web/spamhaus")
     # Certificates & TLS: settings read from crassostrea.conf, requests applied
     # by system/libexec/tls-apply, which records their outcome in TLS_STATUS
     CONF_FILE = os.environ.get("SF_CONF", "/etc/crassostrea/crassostrea.conf")
@@ -123,7 +128,6 @@ class Config:
     ACME_DNS_CHALLENGE = _bool("ACME_DNS_CHALLENGE", False)
     # Base URL used in links of quarantine digest mails
     PUBLIC_URL = _public_url()
-    LOG_LINES = int(os.environ.get("LOG_LINES", "9999"))
     INITIAL_ADMIN_PASSWORD = os.environ.get("WEB_ADMIN_PASSWORD", "")
 
     # WEB_SECURE_COOKIES is the name in crassostrea.conf
@@ -131,8 +135,6 @@ class Config:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_NAME = "crassostrea_session"
-    # Seconds after which a login ends however active it is (auth.expire_login)
-    PERMANENT_SESSION_LIFETIME = int(os.environ.get("WEB_SESSION_LIFETIME", "28800"))
     WTF_CSRF_TIME_LIMIT = None
 
     # Uploads (training) and quarantine ingestion
@@ -140,8 +142,3 @@ class Config:
     # Internal API: messages from Rspamd's metadata_exporter, up to the
     # largest message size the settings allow (models.MAX_MESSAGE_MB)
     INTERNAL_MAX_CONTENT_LENGTH = 160 * 1024 * 1024
-
-    # Login throttling (per client IP, and per account across all IPs)
-    LOGIN_MAX_FAILURES = int(os.environ.get("WEB_LOGIN_MAX_FAILURES", "10"))
-    LOGIN_MAX_ACCOUNT_FAILURES = int(os.environ.get("WEB_LOGIN_MAX_ACCOUNT_FAILURES", "30"))
-    LOGIN_FAILURE_WINDOW = int(os.environ.get("WEB_LOGIN_FAILURE_WINDOW", "900"))

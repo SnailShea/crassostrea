@@ -782,6 +782,36 @@ SETTING_DEFAULTS = {
     "timezone": "",
     # Every administrator must use two-factor login (1/0)
     "require_admin_2fa": 0,
+    # Sign-in (auth.expire_login, services/store.py): minutes a login lasts
+    # however active it is; failed logins allowed per client address and per
+    # account within the window (minutes)
+    "session_lifetime_minutes": 480,
+    "login_max_failures": 10,
+    "login_max_account_failures": 30,
+    "login_failure_window_minutes": 15,
+    # Web server (system/libexec/nginx-apply): redirect HTTP to HTTPS (1/0);
+    # networks that may open the Rspamd UI (empty: any) and reverse proxies
+    # whose X-Forwarded-For is trusted, one per line
+    "http_redirect": 1,
+    "rspamd_ui_networks": "",
+    "trusted_proxies": "",
+    # Spamhaus Data Query Service key (system/libexec/spamhaus-apply): the
+    # DQS zones instead of the public mirrors, which refuse cloud networks
+    "spamhaus_dqs_key": "",
+    # Lines of the Postfix log kept in Valkey for the Logs page (logship)
+    "postfix_log_lines": 9999,
+    # update.sh: the newest release (release) or the newest commit of
+    # update_branch (main)
+    "update_channel": "release",
+    "update_branch": "main",
+    # Watchdog notices (services/watchdog, read from Valkey): addresses,
+    # a webhook and its JSON body, the subject, also at its start and for bans
+    "watchdog_notify_email": "",
+    "watchdog_notify_webhook": "",
+    "watchdog_notify_webhook_body": '{"username": "Crassostrea Watchdog", "content": "**${SUBJECT}**\\n${BODY}"}',
+    "watchdog_subject": "Watchdog ALERT",
+    "watchdog_notify_start": 1,
+    "watchdog_notify_ban": 0,
     "audit_retention_days": 365,
     # Backups (system/libexec/backup reads these): scheduled backups kept,
     # rows of the mail log and the quarantine included (1/0)

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import field %}
 {% block title %}Monitoring{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -15,8 +16,17 @@
     <dt>Crassostrea</dt><dd class="mono">{{ deployed.version }}
       {%- if deployed.release_url %} · <a href="{{ deployed.release_url }}" rel="noopener" target="_blank">release notes ↗</a>{% endif %}</dd>
     <dt>Deployed</dt><dd>{{ deployed.deployed_at|datetime if deployed.deployed_at else '–' }}</dd>
-    <dt>Updates</dt><dd>{{ deployed.channel }} (<code>update.sh</code>, <code>UPDATE_CHANNEL</code> in crassostrea.conf)</dd>
   </dl>
+  <form method="post" action="{{ url_for('monitoring.save_update_channel') }}">
+    {{ update_form.csrf_token }}
+    <div class="form-row">
+      {{ field(update_form.update_channel) }}
+      {{ field(update_form.update_branch, help="The branch of the main channel, usually main.") }}
+    </div>
+    <p class="muted">Run <code>sudo ./update.sh</code> in the checkout to update; <code>--channel</code> overrides
+      this once. Every cluster node follows the same channel.</p>
+    <div class="actions"><button type="submit" class="btn primary">Save</button></div>
+  </form>
 </div>
 
 <div class="live" data-live data-live-refresh="30">

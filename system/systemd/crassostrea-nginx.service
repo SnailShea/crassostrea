@@ -1,0 +1,6 @@
+[Unit]
+Description=Crassostrea: apply the web server settings of the web UI to nginx
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/crassostrea/nginx-apply

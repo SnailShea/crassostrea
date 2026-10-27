@@ -210,7 +210,7 @@ def _cleanup():
                f"report(s) older than {report_days} day(s), {stat_count} hourly statistic(s) older than "
                f"{stat_days} day(s) and {tokens} expired digest token(s) and password link(s).")
     try:
-        _store().trim_logs(current_app.config["LOG_LINES"])
+        _store().trim_logs(get_setting("postfix_log_lines"))
     except Exception as exc:
         click.echo(f"Warning: cannot trim logs: {exc}")
 

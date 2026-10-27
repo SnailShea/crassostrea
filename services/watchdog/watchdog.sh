@@ -105,7 +105,26 @@ log_msg() {
   echo $(date) $(printf '%s\n' "${1}")
 }
 
+# The notice settings of the web UI (Settings -> Alerts & export), written to
+# the hash WATCHDOG_NOTIFY by its sync. Read again for every notice; while
+# Valkey cannot be reached the values read last stay
+load_notify_settings() {
+  local field value
+  for field in email webhook webhook_body subject notify_start notify_ban; do
+    value=$(timeout 4s ${REDIS_CMDLINE} --raw HGET WATCHDOG_NOTIFY "${field}" 2> /dev/null) || return 1
+    case ${field} in
+      email) WATCHDOG_NOTIFY_EMAIL=${value} ;;
+      webhook) WATCHDOG_NOTIFY_WEBHOOK=${value} ;;
+      webhook_body) WATCHDOG_NOTIFY_WEBHOOK_BODY=${value} ;;
+      subject) WATCHDOG_SUBJECT=${value:-Watchdog ALERT} ;;
+      notify_start) WATCHDOG_NOTIFY_START=${value} ;;
+      notify_ban) WATCHDOG_NOTIFY_BAN=${value} ;;
+    esac
+  done
+}
+
 function notify_error() {
+  load_notify_settings
   # Check if one of the notification options is enabled
   [[ -z ${WATCHDOG_NOTIFY_EMAIL} ]] && [[ -z ${WATCHDOG_NOTIFY_WEBHOOK} ]] && return 0
   THROTTLE=
@@ -124,7 +143,6 @@ function notify_error() {
       return 1
     fi
   fi
-  WATCHDOG_NOTIFY_EMAIL=$(echo "${WATCHDOG_NOTIFY_EMAIL}" | sed 's/"//;s|"$||')
   # Some exceptions for subject and body formats
   if [[ ${1} == "fail2ban" ]]; then
     SUBJECT="${BODY}"
@@ -176,14 +194,14 @@ function notify_error() {
     fi
 
     # Escape subject and body (https://stackoverflow.com/a/2705678)
-    ESCAPED_SUBJECT=$(echo ${SUBJECT} | sed -e 's/[\/&]/\\&/g')
-    ESCAPED_BODY=$(echo ${BODY} | sed -e 's/[\/&]/\\&/g')
+    ESCAPED_SUBJECT=$(printf '%s' "${SUBJECT}" | tr '\n"\\' '  ' | sed -e 's/[\/&]/\\&/g')
+    ESCAPED_BODY=$(printf '%s' "${BODY}" | tr '\n"\\' '  ' | sed -e 's/[\/&]/\\&/g')
 
     # Replace subject and body placeholders
-    WEBHOOK_BODY=$(echo ${WATCHDOG_NOTIFY_WEBHOOK_BODY} | sed -e "s/\$SUBJECT\|\${SUBJECT}/$ESCAPED_SUBJECT/g" -e "s/\$BODY\|\${BODY}/$ESCAPED_BODY/g")
+    WEBHOOK_BODY=$(printf '%s' "${WATCHDOG_NOTIFY_WEBHOOK_BODY}" | sed -e "s/\${SUBJECT}\|\$SUBJECT/${ESCAPED_SUBJECT}/g" -e "s/\${BODY}\|\$BODY/${ESCAPED_BODY}/g")
 
-    # POST to webhook
-    curl -X POST -H "Content-Type: application/json" ${CURL_VERBOSE} -d "${WEBHOOK_BODY}" ${WATCHDOG_NOTIFY_WEBHOOK}
+    # POST to webhook (the web UI accepts only http(s) URLs without spaces)
+    curl -X POST -H "Content-Type: application/json" ${CURL_VERBOSE} --max-time 15 -d "${WEBHOOK_BODY}" -- "${WATCHDOG_NOTIFY_WEBHOOK}"
 
     log_msg "Sent notification using webhook"
   fi
@@ -650,6 +668,7 @@ olefy_checks() {
 }
 
 # Notify about start
+load_notify_settings
 if [[ ${WATCHDOG_NOTIFY_START} =~ ^([yY][eE][sS]|[yY])+$ ]]; then
   notify_error "watchdog-crassostrea" "Watchdog started monitoring Crassostrea on ${CRASSOSTREA_HOSTNAME}."
 fi
@@ -885,6 +904,7 @@ while true; do
         log_msg "Banned ${host}"
         rm /tmp/fail2ban 2> /dev/null
         timeout 2s whois "${host}" > /tmp/fail2ban
+        load_notify_settings
         [[ ${WATCHDOG_NOTIFY_BAN} =~ ^([yY][eE][sS]|[yY])+$ ]] && notify_error "${com_pipe_answer}" "IP ban: ${host}"
       done
     fi
