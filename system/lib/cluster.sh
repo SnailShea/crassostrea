@@ -97,6 +97,8 @@ ha_parse() {
     local router_id=${HA_VIP_ROUTER_ID:-51}
     [[ ${router_id} =~ ^[0-9]+$ ]] && (( 10#${router_id} >= 1 && 10#${router_id} <= 255 )) \
       || die "HA_VIP_ROUTER_ID must be a number from 1 to 255"
+    [[ -z ${HA_VIP_INTERFACE:-} || ${HA_VIP_INTERFACE} =~ ^[A-Za-z0-9_.@-]{1,15}$ ]] \
+      || die "HA_VIP_INTERFACE must be the name of a network interface"
   fi
   return 0
 }

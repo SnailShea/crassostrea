@@ -369,7 +369,9 @@ HA_WITNESS=
 # Floating address/prefix for the web UI, moved by keepalived between the
 # nodes (they must share the network), e.g. 192.0.2.10/24
 HA_VIP=
-# Network interface for HA_VIP (default: the one with the node's address)
+# Network interface for HA_VIP (default: the one with the node's cluster
+# address), e.g. the public one when HA_NODES are private addresses; VRRP
+# always runs on the cluster address's interface
 HA_VIP_INTERFACE=
 # VRRP router ID (1-255), unique in the network of HA_VIP
 HA_VIP_ROUTER_ID=51

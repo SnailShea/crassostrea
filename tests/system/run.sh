@@ -2,7 +2,7 @@
 # System tests: the rendered cluster configuration with the real EL10
 # binaries, in user and network namespaces (no root, nothing installed).
 #
-#   tests/system/run.sh [render] [valkey] [galera] [acme] [netfilter] [js]
+#   tests/system/run.sh [render] [valkey] [galera] [keepalived] [acme] [netfilter] [js]
 #
 # Without arguments all tests run. Needs an EL10 host with dnf (packages are
 # downloaded, not installed), unprivileged user namespaces, nft, curl,
@@ -13,10 +13,10 @@ DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source "${DIR}/lib.sh"
 
 tests=("$@")
-[[ ${#tests[@]} -gt 0 ]] || tests=(render valkey galera acme netfilter js)
+[[ ${#tests[@]} -gt 0 ]] || tests=(render valkey galera keepalived acme netfilter js)
 mkdir -p "${WORK}"
 
-if [[ ! -x ${PKG}/usr/bin/valkey-server ]]; then
+if [[ ! -x ${PKG}/usr/bin/valkey-server || ! -x ${PKG}/usr/sbin/keepalived ]]; then
   "${DIR}/fetch-packages.sh" || exit 1
 fi
 # the rendered cluster is the input of every test but js
@@ -38,6 +38,7 @@ for test in "${tests[@]}"; do
   case "${test}" in
     valkey) unshare -rnm bash "${DIR}/valkey-ha.sh" ;;
     galera) unshare -rnm bash "${DIR}/galera-ha.sh" ;;
+    keepalived) unshare -rnm bash "${DIR}/keepalived-vip.sh" ;;
     acme) unshare -rn bash "${DIR}/acme-peers.sh" ;;
     netfilter) venv && bash "${DIR}/netfilter.sh" ;;
     js)

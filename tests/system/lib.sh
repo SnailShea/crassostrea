@@ -18,6 +18,9 @@ NODE2=mx2.example.com
 WITNESS=witness.example.com
 HA_NODES="${NODE1}=10.0.0.1,${NODE2}=10.0.0.2"
 HA_WITNESS="${WITNESS}=10.0.0.3"
+# The floating address, on another network than the cluster's
+HA_VIP=192.0.2.10/24
+HA_VIP_INTERFACE=pub
 
 fails=0
 

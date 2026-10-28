@@ -1013,23 +1013,26 @@ EOF
 }
 
 # Floating address for the web UI (HA_VIP): on one node whose web UI and
-# database work; it stays there until that node fails (nopreempt)
+# database work; it stays there until that node fails (nopreempt). VRRP runs
+# on the interface with the node's cluster address; the address itself may
+# be on another one (HA_VIP_INTERFACE, e.g. the public network)
 render_keepalived() {
-  local conf=/etc/keepalived/keepalived.conf iface=${HA_VIP_INTERFACE} priority=100 i peer
+  local conf=/etc/keepalived/keepalived.conf iface vip_iface priority=100 i peer
   if [[ ${HA_ROLE} != node || -z ${HA_VIP} ]]; then
     restore_original "${conf}" keepalived.service
     rm -f "$(p /usr/libexec/keepalived/crassostrea-health)"
     return 0
   fi
   install_file "${SF_SRC}/system/keepalived/crassostrea-health" /usr/libexec/keepalived/crassostrea-health 0755
-  if [[ -z ${iface} ]]; then
-    if dry; then
-      iface=eth0
-    else
-      iface=$(ip -o -4 addr show | awk -v addr="${HA_SELF_ADDR}" '{split($4, a, "/")} a[1] == addr {print $2; exit}')
-    fi
-    [[ -n ${iface} ]] || die "No interface has the address ${HA_SELF_ADDR}, set HA_VIP_INTERFACE"
+  if dry; then
+    iface=eth0
+  else
+    iface=$(ip -o -4 addr show | awk -v addr="${HA_SELF_ADDR}" '{split($4, a, "/")} a[1] == addr {print $2; exit}')
   fi
+  [[ -n ${iface} ]] || die "No interface has the cluster address ${HA_SELF_ADDR}"
+  vip_iface=${HA_VIP_INTERFACE:-${iface}}
+  dry || ip link show dev "${vip_iface}" > /dev/null 2>&1 \
+    || die "HA_VIP_INTERFACE: there is no interface ${vip_iface}"
   for i in "${!HA_NODE_ADDRS[@]}"; do
     [[ ${HA_NODE_ADDRS[i]} == "${HA_SELF_ADDR}" ]] && priority=$(( 200 - i * 10 ))
   done
@@ -1070,8 +1073,14 @@ EOF
     fi
     cat <<EOF
   virtual_ipaddress {
-    ${HA_VIP} dev ${iface}
+    ${HA_VIP} dev ${vip_iface}
   }
+EOF
+    # the address is given up when its interface goes down, like VRRP's own
+    if [[ ${vip_iface} != "${iface}" ]]; then
+      printf '  track_interface {\n    %s\n  }\n' "${vip_iface}"
+    fi
+    cat <<EOF
   track_script {
     crassostrea_health
   }

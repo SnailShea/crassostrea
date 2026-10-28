@@ -39,6 +39,11 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ### Changed
 
+- **Floating address on another network than the cluster's**: keepalived's
+  VRRP always runs on the interface with the node's cluster address;
+  `HA_VIP_INTERFACE` only chooses where the address is added (e.g. the public
+  network when `HA_NODES` are private addresses), and that interface is
+  tracked. `sudo system/configure.sh` on every node applies it.
 - These settings are no longer read from `crassostrea.conf`:
   `WEB_SESSION_LIFETIME`, `WEB_LOGIN_MAX_FAILURES`,
   `WEB_LOGIN_MAX_ACCOUNT_FAILURES`, `WEB_LOGIN_FAILURE_WINDOW`,

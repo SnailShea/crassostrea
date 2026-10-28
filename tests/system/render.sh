@@ -18,7 +18,7 @@ member() {
 member mx1
 # setup.sh refuses to run without root: a user namespace is enough
 unshare -r "${REPO}/setup.sh" --hostname "${NODE1}" --yes --config-only \
-  --ha-nodes "${HA_NODES}" --ha-witness "${HA_WITNESS}" --ha-vip none > "${WORK}/setup.log" 2>&1 \
+  --ha-nodes "${HA_NODES}" --ha-witness "${HA_WITNESS}" --ha-vip "${HA_VIP}" > "${WORK}/setup.log" 2>&1 \
   || { echo "setup.sh failed, see ${WORK}/setup.log" >&2; exit 1; }
 
 # join bundles, as system/cluster.sh bundle would create them
@@ -36,6 +36,11 @@ unshare -r "${REPO}/setup.sh" --hostname "${NODE1}" --yes --config-only \
 
 # the documentation is served by mx1 (acme test: /docs/ for administrators)
 echo "DOCS_ENABLED=y" >> "${NODES}/mx1/etc/crassostrea/crassostrea.conf"
+# the floating address on the public network, VRRP on the cluster network
+# (eth0 in a dry run)
+for host in mx1 mx2; do
+  echo "HA_VIP_INTERFACE=${HA_VIP_INTERFACE}" >> "${NODES}/${host}/etc/crassostrea/crassostrea.conf"
+done
 
 for host in mx1 mx2 witness; do
   member "${host}"
@@ -45,7 +50,7 @@ done
 # a cluster of one node, as the Cluster page of the web UI creates it
 member solo
 unshare -r "${REPO}/setup.sh" --hostname solo.example.com --yes --config-only --ha \
-  --ha-nodes solo.example.com=10.0.0.9 --ha-witness none --ha-vip none > "${WORK}/setup-solo.log" 2>&1 \
+  --ha-nodes solo.example.com=10.0.0.9 --ha-witness none --ha-vip 10.0.0.50/24 > "${WORK}/setup-solo.log" 2>&1 \
   && "${REPO}/system/configure.sh" > "${WORK}/configure-solo.log" 2>&1 \
   || { echo "Rendering a one-node cluster failed, see ${WORK}/*-solo.log" >&2; exit 1; }
 
