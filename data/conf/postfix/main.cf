@@ -176,8 +176,11 @@ smtp_dns_support_level = dnssec
 smtp_tls_security_level = dane
 smtp_tls_mandatory_protocols = >=TLSv1.2
 smtp_tls_protocols = >=TLSv1.2
-# DANE / MTA-STS policy lookups for outbound and downstream delivery
-smtp_tls_policy_maps = socketmap:inet:127.0.0.1:8642:QUERYwithTLSRPT
+# DANE / MTA-STS policy lookups for outbound and downstream delivery.
+# QUERY, not QUERYwithTLSRPT: the TLSRPT attributes of that answer need
+# Postfix 3.10, and older versions defer every message to a domain with an
+# MTA-STS policy ("client TLS configuration problem")
+smtp_tls_policy_maps = socketmap:inet:127.0.0.1:8642:QUERY
 
 tls_preempt_cipherlist = yes
 tls_ssl_options = NO_COMPRESSION, NO_RENEGOTIATION

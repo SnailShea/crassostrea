@@ -16,6 +16,17 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-28
+
+### Fixed
+
+- **Outbound mail to domains with an MTA-STS policy was deferred** with
+  "client TLS configuration problem": Postfix asked postfix-tlspol for
+  policies with TLSRPT attributes, which only Postfix 3.10 understands (EL10
+  has 3.8). `smtp_tls_policy_maps` uses the plain query.
+  `sudo system/configure.sh` applies it; `sudo postqueue -f` sends the
+  deferred mail.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added
@@ -110,7 +121,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/SnailShea/crassostrea/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SnailShea/crassostrea/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/SnailShea/crassostrea/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SnailShea/crassostrea/releases/tag/v0.1.0
