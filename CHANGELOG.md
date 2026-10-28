@@ -16,6 +16,15 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-28
+
+### Added
+
+- **Monitoring check "TLS policy lookups"** (and the metric
+  `sf_tls_policy_ok`): looks up the policy of a domain with MTA-STS the way
+  Postfix does, and fails when postfix-tlspol does not answer, cannot look it
+  up, or answers in a form the installed Postfix does not understand.
+
 ## [0.2.1] - 2026-10-28
 
 ### Fixed
@@ -121,7 +130,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/SnailShea/crassostrea/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SnailShea/crassostrea/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SnailShea/crassostrea/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/SnailShea/crassostrea/compare/v0.1.0...v0.1.1

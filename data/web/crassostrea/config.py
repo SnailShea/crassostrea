@@ -90,6 +90,10 @@ class Config:
     TLS_STATUS = os.environ.get("TLS_STATUS", "/var/lib/crassostrea/tls/status.json")
     SSL_CERT = os.environ.get("SSL_CERT", "/etc/crassostrea/ssl/cert.pem")
     CA_BUNDLE = os.environ.get("CA_BUNDLE", "/etc/pki/tls/certs/ca-bundle.crt")
+    # The TLS policy check (services/tlspolicy.py): Postfix's postconf, and a
+    # domain with an MTA-STS policy whose lookup it tries
+    POSTCONF = os.environ.get("POSTCONF", "/usr/sbin/postconf")
+    TLS_POLICY_CHECK_DOMAIN = os.environ.get("TLS_POLICY_CHECK_DOMAIN", "gmail.com")
     # Backups: made, deleted and listed by system/libexec/backup
     BACKUP_DIR = os.environ.get("BACKUP_DIR", "/var/lib/crassostrea/backups")
     BACKUP_REQUEST = os.environ.get("BACKUP_REQUEST", "/var/lib/crassostrea/web/backup-request.json")

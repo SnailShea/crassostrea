@@ -266,13 +266,14 @@ existing mail server. A Flask web interface manages it.
   `/metrics` for Prometheus with a bearer token
   (components and services up, mail queue and age of deferred mail,
   quarantine, messages of the last hour and day, certificate expiry, last
-  backup, directory synchronisation; rspamd's own metrics are at
+  backup, directory synchronisation, TLS policy lookups; rspamd's own metrics are at
   `/rspamd/metrics`). Every scanned message and audit log entry can go to a
   SIEM as JSON or RFC 5424 syslog over UDP, TCP or TLS
   (`crassostrea-siem.service`, queued in Valkey while the SIEM is away).
   Alert mail when deferred mail piles up or waits long, the certificate is
   about to expire, there is no recent backup, a directory does not
-  synchronise or a service stopped (checked every 5 minutes, repeated daily,
+  synchronise, a service stopped or Postfix cannot use the DANE/MTA-STS
+  policies of postfix-tlspol (checked every 5 minutes, repeated daily,
   and a notice when solved). The watchdog's own notices (a service it
   restarted, its start, bans) go by mail straight to the recipients' servers
   and to a webhook (e.g. a chat), set on the same page.

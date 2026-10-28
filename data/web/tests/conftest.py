@@ -54,6 +54,8 @@ def config(tmp_path):
         "CLUSTER_SETUP_REQUEST": str(tmp_path / "cluster-setup.json"),
         "CLUSTER_SETUP_STATUS": str(tmp_path / "cluster-setup-status.json"),
         "INITIAL_ADMIN_PASSWORD": "initial-password",
+        # no Postfix: the TLS policy check is left out (test_tlspolicy.py)
+        "POSTCONF": str(tmp_path / "no-postconf"),
         # rspamd as seen by the internal API in the tests
         "INTERNAL_CLIENTS": ["172.22.1.5", "172.22.1.9"],
     }

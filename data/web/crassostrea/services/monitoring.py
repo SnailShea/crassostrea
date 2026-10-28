@@ -4,11 +4,13 @@
 stored) in the Prometheus text format: whether the database, Valkey, rspamd
 and the services run, the mail queue, the quarantine and mail log, the
 messages of the last hour and day, the certificate's expiry, the last
-backup and the directory synchronisations.
+backup, the directory synchronisations and whether Postfix's TLS policy
+lookups work.
 
 ``check`` evaluates the alert conditions (deferred mail piling up or
 waiting long, the certificate expiring, no recent backup, a failing
-directory synchronisation, a stopped service; in a cluster the queue and
+directory synchronisation, a stopped service, TLS policy lookups that
+Postfix cannot use (services/tlspolicy.py); in a cluster the queue and
 services of every node and the cluster's problems, services/cluster.py).
 ``run_alerts`` (flask
 check-alerts, crassostrea-job-alerts.timer, every 5 minutes) mails
@@ -30,7 +32,7 @@ from flask import current_app
 
 from ..extensions import db
 from ..models import Directory, MailLogEntry, QuarantineItem, StatBucket, get_setting, set_setting, utcnow
-from . import backups, certificates, cluster, mailer, postfix_control, store, system
+from . import backups, certificates, cluster, mailer, postfix_control, store, system, tlspolicy
 from .rspamd import RspamdError, client
 
 ALERT_STATE = "sf_alert_state"
@@ -155,6 +157,9 @@ def collect():
     last, state = _try(_last_backup, (None, None))
     add("sf_backup_last_timestamp_seconds", "Unix time of the newest backup", "gauge", [({}, last)])
     add("sf_backup_last_failed", "Whether the last backup failed", "gauge", [({}, int(state == "failed"))])
+    policy = _try(tlspolicy.check)
+    if policy is not None:
+        add("sf_tls_policy_ok", "Whether Postfix's TLS policy lookups work", "gauge", [({}, int(policy["ok"]))])
     if cluster.enabled():
         _cluster_metrics(add)
     return metrics
@@ -295,6 +300,9 @@ def check():
     results["directories"] = {"ok": not failing,
                               "message": f"Not synchronised: {', '.join(failing)}" if failing
                               else "Every directory synchronises"}
+    policy = _try(tlspolicy.check)
+    if policy is not None:
+        results["tls_policy"] = policy
     if not cluster.enabled():
         units = _try(system.units)
         if units is not None:
@@ -306,7 +314,7 @@ LABELS = {"queue": "Deferred mail", "queue_age": "Mail waiting", "certificate": 
           "directories": "Directories", "services": "Services", "node": "Cluster node", "database": "Database cluster",
           "probe": "Cluster service", "valkey": "Valkey", "sentinel": "Sentinel", "disk": "Disk space",
           "maintenance": "Maintenance", "witness": "Witness", "vip": "Floating address", "versions": "Versions",
-          "mail": "Mail acceptance"}
+          "mail": "Mail acceptance", "tls_policy": "TLS policy lookups"}
 
 
 def label(name):
