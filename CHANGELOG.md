@@ -16,6 +16,8 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
 ### Added
 
 - **Settings → General: Sign-in** sets how long a login lasts and the failed
@@ -108,6 +110,7 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SnailShea/crassostrea/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/SnailShea/crassostrea/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/SnailShea/crassostrea/releases/tag/v0.1.0
