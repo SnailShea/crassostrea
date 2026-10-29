@@ -54,6 +54,24 @@ for _ in range(3):
   main.ban('2a01:4f8:5:6::1')
 check('ipv6 banned as /64', 'ip6 saddr 2a01:4f8:5:6::/64' in ruleset())
 
+# the rules: written when missing; a rule's own attempts
+main.refreshF2bregex()
+check('default rules written', json.loads(main.r.get('F2B_REGEX')) == main.DEFAULT_F2B_REGEX)
+found = main.match('NON-SMTP COMMAND from [45.33.40.20]:13894 after CONNECT: GET / HTTP/1.0')
+check('postscreen rule matches with 1 attempt', found == ('45.33.40.20', '6', 1))
+main.ban(found[0], found[2])
+check('banned on the first match', 'ip saddr 45.33.40.0/24' in ruleset())
+found = main.match('PREGREET 11 after 0.16 from [45.33.41.40]:54965: EHLO User\\r\\n')
+for _ in range(2):
+  main.ban(found[0], found[2])
+check('3-attempt rule: not after 2', '45.33.41.0/24' not in ruleset())
+main.ban(found[0], found[2])
+check('3-attempt rule: banned after 3', 'ip saddr 45.33.41.0/24' in ruleset())
+check('no rule for a hangup', main.match('HANGUP after 0.03 from [85.217.149.30]:51634 in tests') is None)
+main.r.set('F2B_REGEX', json.dumps({'1': 'Bad login from ([0-9.]+)', '2': {'regex': '(['}}))
+main.refreshF2bregex()
+check('bare patterns and broken rules', main.match('Bad login from 192.0.2.77') == ('192.0.2.77', '1', None))
+
 main.r.hset('F2B_QUEUE_UNBAN', '45.33.32.0/24', 1)
 main.unban('45.33.32.0/24')
 check('queued unban removes rule and keys', '45.33.32.0/24' not in ruleset()

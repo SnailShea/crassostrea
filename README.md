@@ -130,7 +130,10 @@ existing mail server. A Flask web interface manages it.
   domain administrators see their domains.
   Counted as mail is logged and kept two years by default (much longer than
   the mail log); filled from the mail log once after an update. Also
-  `/api/v1/statistics`.
+  `/api/v1/statistics`. The dashboard also shows the average processing
+  time of the period (Rspamd's scan, and Postfix's time from arrival to
+  delivery) and, for full administrators, the mail queue inbound and
+  outbound and the node's use of CPU, memory and storage.
 - **Journaling** (Mail log → Journaling): a copy of every accepted inbound and/or outbound
   message (optionally rejected ones too) to an archive address (MailStore,
   an Exchange or Microsoft 365 journal mailbox, ...): a journal report with
@@ -315,7 +318,7 @@ existing mail server. A Flask web interface manages it.
   scanned in full, by ClamAV too (up to 128 MiB, 90 s per scan, archives up to
   ClamAV's default depth and file count); what ClamAV cannot scan completely
   is not let through silently but scored `CLAM_SCAN_INCOMPLETE` (+4).
-- **Operations**: dashboard (statistics, health, recent mail), Monitoring
+- **Operations**: dashboard (statistics, processing time, mail queue, system load, health, recent mail), Monitoring
   (checks and the state of every service), Postfix mail queue (flush, deliver,
   hold, delete), **Logs** (Monitoring → Logs: the Postfix log of all nodes and
   the journal of Rspamd, ClamAV, the web interface, nginx, the database,
@@ -733,8 +736,11 @@ only (TLS).
   `crassostrea-postfix-reload.path` reloads Postfix when the relay networks
   change.
 - **Logs and bans**: `crassostrea-logship` forwards the mail log from journald
-  to Valkey (web UI log page, `F2B_CHANNEL`); `crassostrea-netfilter` bans
-  networks in its own nftables table (`inet crassostrea`), next to firewalld.
+  to Valkey (web UI log page, `F2B_CHANNEL`) and nginx's access log to
+  `F2B_CHANNEL`; `crassostrea-netfilter` bans networks in its own nftables
+  table (`inet crassostrea`), next to firewalld. Each rule has its own number
+  of matches: failed logins ban after 10, scans for `/.env`, `.git` or PHP
+  pages, HTTP on port 25 and exploit attempts the web UI refuses ban at once.
 - **DKIM**: keys are stored in the database and copied to Valkey
   (`DKIM_PRIV_KEYS`, `DKIM_SELECTORS`). Rspamd signs mail from relay networks.
   Released outbound mail is signed by the web UI with the same key and header

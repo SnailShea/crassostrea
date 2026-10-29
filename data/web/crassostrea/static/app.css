@@ -329,6 +329,14 @@ table.checks .group-row th { background: none; color: var(--text); font-size: .9
 .live.is-loading { opacity: .6; transition: opacity .2s; }
 
 /* Statistics: stacked bars drawn as SVG on the server */
+/* Dashboard: use of CPU, memory and storage */
+dl.props.meters dd { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem; }
+dl.props.meters dd > div { flex-basis: 100%; }
+.meter { width: 8rem; height: .45rem; flex: none; }
+.meter .track { fill: var(--border); }
+.meter .good { fill: var(--good); }
+.meter .warn { fill: var(--warn); }
+.meter .bad { fill: var(--bad); }
 .chart { width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--border, #ccc); stroke-width: 1; }
 .chart-times { display: flex; justify-content: space-between; color: var(--muted); font-size: .75rem; margin-top: .25rem; }

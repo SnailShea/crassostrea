@@ -9,11 +9,35 @@ from ..models import get_setting
 
 # netfilter-crassostrea reads its ban rules from this key on every log message
 # (services/netfilter/main.py writes the same rules when the key is missing).
+# Each rule: the pattern (group 1 is the address) and the matches that ban,
+# within the retry window (default: the max_attempts of F2B_OPTIONS). Lines
+# come from Postfix and nginx (system/libexec/logship) and from the web UI.
+WEB_PROBE = (
+    r'(?i)^([0-9a-f\.:]+) - \S+ \[[^\]]*\] "[A-Z]+ [^" ]*?(?:'
+    # secrets and version control
+    r"/\.(?:env|git|svn|hg|aws|ssh|DS_Store|htaccess|htpasswd|vscode|idea|docker)"
+    r"|credentials\.json|service-account\.json|/\.?secrets?\.|/config\.(?:js|json|ya?ml)(?:[?# ]|$)"
+    # other applications and devices
+    r"|\.php(?:[/?#. ]|$)|/wp-(?:admin|login|content|includes|config|json)|/wordpress/|/wp/|/cgi-bin/"
+    r"|/_profiler|/actuator|/server-status|/vendor/phpunit|/phpmyadmin|/boaform|/HNAP1)"
+)
 F2B_REGEX = {
-    "1": r"Crassostrea UI: Invalid password for .+ by ([0-9a-f\.:]+)",
-    "2": r"warning: non-SMTP command from .*\[([0-9a-f\.:]+)]:.+",
-    "3": r"NOQUEUE: reject: RCPT from \[([0-9a-f\.:]+)].+Protocol error.+",
-    "4": r"Crassostrea API: Invalid API key by ([0-9a-f\.:]+)",
+    "1": {"regex": r"Crassostrea UI: Invalid password for .+ by ([0-9a-f\.:]+)"},
+    "2": {"regex": r"warning: non-SMTP command from .*\[([0-9a-f\.:]+)]:.+"},
+    "3": {"regex": r"NOQUEUE: reject: RCPT from \[([0-9a-f\.:]+)].+Protocol error.+"},
+    "4": {"regex": r"Crassostrea API: Invalid API key by ([0-9a-f\.:]+)"},
+    # a request only an exploit sends (services/exploits.py)
+    "5": {"regex": r"Crassostrea UI: Exploit attempt by ([0-9a-f\.:]+)", "attempts": 1},
+    # postscreen: HTTP or TLS on port 25
+    "6": {"regex": r"NON-SMTP COMMAND from \[([0-9a-f\.:]+)\]", "attempts": 1},
+    # postscreen: talking before the greeting, bare newlines, pipelining
+    "7": {"regex": r"(?:PREGREET \d+ after [0-9.]+|BARE NEWLINE|COMMAND PIPELINING) from \[([0-9a-f\.:]+)\]",
+          "attempts": 3},
+    # open relay tests
+    "8": {"regex": r"NOQUEUE: reject: RCPT from [^\[\s]*\[([0-9a-f\.:]+)\](?::\d+)?: 554 5\.7\.1 <[^>]*>: "
+                   r"Relay access denied", "attempts": 3},
+    # nginx: paths of other applications, secrets, version control
+    "9": {"regex": WEB_PROBE, "attempts": 1},
 }
 
 

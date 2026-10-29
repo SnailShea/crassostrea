@@ -6,12 +6,16 @@ Replaces syslog-ng of the former Postfix containers:
     trimmed to the lines of the web UI's Settings (POSTFIX_LOG_LINES)
   * Postfix lines are published on F2B_CHANNEL, where netfilter matches them
     against its ban rules (F2B_REGEX)
+  * nginx's access log (syslog tag crassostrea_access, system/configure.sh)
+    is published on F2B_CHANNEL as well, for the rules against scanners; it
+    is not part of the mail log
   * recipients Postfix refused because they do not exist are reported to the
     web UI's internal API (/internal/refused-recipient), which adds them to
     the mail log: Rspamd never sees them
   * delivery attempts, the notices Postfix sends the sender (bounces, delay
     warnings) and expired messages are reported to /internal/delivery: the
-    mail log shows what became of each message
+    mail log shows what became of each message, the dashboard how long
+    delivery took
 
 In a cluster every node ships to the shared valkey; entries carry the node's
 name ("host").
@@ -34,6 +38,8 @@ PRIORITIES = ["emerg", "alert", "crit", "err", "warning", "notice", "info", "deb
 IGNORE = re.compile(r"overriding earlier entry|TLS SNI from checks\.mailcow\.email|no SASL support")
 # syslog-ng's $(sanitize): control characters and "/" become "_"
 UNSAFE = re.compile(r"[\x00-\x1f\x7f/]")
+CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+NGINX_TAG = "crassostrea_access"
 TLSPOL_UNIT = "crassostrea-postfix-tlspol.service"
 TRIM_EVERY = 100
 # Lines kept: written by the web UI (services/serverconf.py)
@@ -53,7 +59,8 @@ QID = r"(?P<qid>[0-9A-Za-z]{6,32})"
 # a delivery agent (smtp, lmtp, local, virtual, pipe, error, discard) on one
 # recipient; address verification probes report deliverable/undeliverable
 DELIVERY = re.compile(
-    QID + r": to=<(?P<rcpt>[^<>\s]+)>,(?: orig_to=<[^<>]*>,)? relay=(?P<relay>[^,]*), .*?"
+    QID + r": to=<(?P<rcpt>[^<>\s]+)>,(?: orig_to=<[^<>]*>,)? relay=(?P<relay>[^,]*), "
+    r"(?:conn_use=\d+, )?(?:delay=(?P<delay>\d+(?:\.\d+)?), )?.*?"
     r"dsn=(?P<dsn>[245]\.\d{1,3}\.\d{1,3}), status=(?P<status>sent|deferred|bounced) \((?P<detail>.*)\)$")
 NOTICE = re.compile(QID + r": sender (?P<notice>non-delivery|delay|delivery status) notification: "
                     r"(?P<notice_qid>[0-9A-Za-z]{6,32})$")
@@ -88,6 +95,15 @@ def record(entry, host=""):
     return json.dumps(item, ensure_ascii=False), not is_tlspol
 
 
+def access_line(entry):
+    """The line of an nginx access log entry to publish (control characters
+    replaced, paths kept for the rules), "" for an empty one, or None for
+    other entries."""
+    if text(entry.get("SYSLOG_IDENTIFIER")) != NGINX_TAG:
+        return None
+    return CONTROL.sub("_", text(entry.get("MESSAGE")))
+
+
 def refused(entry):
     """The event of a refused recipient for the internal API, or None."""
     if "smtpd" not in text(entry.get("SYSLOG_IDENTIFIER")):
@@ -116,7 +132,7 @@ def delivery(entry):
     if match:
         return {"time": timestamp, "kind": "delivery", "qid": match["qid"], "rcpt": match["rcpt"],
                 "relay": match["relay"], "dsn": match["dsn"], "status": match["status"],
-                "detail": match["detail"][:500]}
+                "detail": match["detail"][:500], "delay": float(match["delay"]) if match["delay"] else None}
     match = NOTICE.match(message)
     if match:
         return {"time": timestamp, "kind": NOTICE_KINDS[match["notice"]], "qid": match["qid"],
@@ -155,8 +171,8 @@ def journal_command(state_dir):
         # first start: from the end of the journal. Not --since=now, which
         # journalctl (systemd >= 257) refuses together with --cursor-file
         command.append("--lines=0")
-    # mail facility (2) or the postfix-tlspol service
-    return command + ["SYSLOG_FACILITY=2", "+", "_SYSTEMD_UNIT=" + TLSPOL_UNIT]
+    # mail facility (2), the postfix-tlspol service or nginx's access log
+    return command + ["SYSLOG_FACILITY=2", "+", "_SYSTEMD_UNIT=" + TLSPOL_UNIT, "+", "SYSLOG_IDENTIFIER=" + NGINX_TAG]
 
 
 def log_lines(client):
@@ -181,6 +197,11 @@ def main():
         try:
             entry = json.loads(line)
         except ValueError:
+            continue
+        access = access_line(entry)
+        if access is not None:
+            if access:
+                client.publish("F2B_CHANNEL", access)
             continue
         item, publish = record(entry, host)
         if item is None:

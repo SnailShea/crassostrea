@@ -1,6 +1,8 @@
-"""Dashboard: the statistics of the scanned mail (services/stats.py), the
-quarantine and recent mail, and for full administrators the health of the
-gateway and its cluster. Domain administrators see their domains only."""
+"""Dashboard: the statistics of the scanned mail (services/stats.py), how
+long scanning and delivery took, the quarantine and recent mail, and for full
+administrators the health of the gateway, its mail queue by direction, its
+use of CPU, memory and storage and its cluster. Domain administrators see
+their domains only."""
 from datetime import timedelta
 
 from flask import request
@@ -8,11 +10,16 @@ from flask_login import current_user
 
 from ..extensions import db
 from ..models import Domain, MailLogEntry, QuarantineItem, utcnow
-from ..services import cluster as cluster_service, maillog, stats, store, system
+from ..services import cluster as cluster_service, deliveries, maillog, monitoring, postfix_control, stats, store, \
+    system
 from ..services.rspamd import RspamdError, client
 from . import in_scope, protected_blueprint, render_live, scope
 
 bp = protected_blueprint("dashboard", __name__, domain_admins=True)
+# The rows of the mail queue card: Postfix's queues (mail passes incoming and
+# maildrop in moments)
+QUEUE_ROWS = {"Being delivered": ("maildrop", "incoming", "active"), "Deferred": ("deferred",),
+              "On hold": ("hold",)}
 
 
 def filters():
@@ -44,8 +51,9 @@ def index():
               .filter(MailLogEntry.reject_reason == "").limit(10).all())
     scoped = [d for d in Domain.query.order_by(Domain.name) if in_scope(d.name)]
     domains = [d.name for d in scoped]
+    delivery_delay, delivered = deliveries.average_delay(data["start"], data["end"], direction, domain, allowed)
 
-    errors, health, cluster, learned = [], None, None, None
+    errors, health, cluster, learned, queue, queue_error, resources = [], None, None, None, None, None, None
     if current_user.is_full_admin:
         stat = None
         try:
@@ -54,6 +62,13 @@ def index():
         except RspamdError as exc:
             errors.append(str(exc))
         health = {"Database": _db_ok(), "Valkey": store.ping(), "Rspamd": stat is not None}
+        try:
+            queue = monitoring.queue_directions()
+            queue["rows"] = [(label, *(sum(queue[d].get(n, 0) for n in names) for d in ("inbound", "outbound")))
+                             for label, names in QUEUE_ROWS.items()]
+        except postfix_control.PostfixControlError as exc:
+            queue_error = str(exc)
+        resources = system.resources()
         cluster = system.cluster_status()
         if cluster:
             errors.extend(cluster["errors"])
@@ -66,7 +81,8 @@ def index():
     return render_live("dashboard.html", "_dashboard_live.html", data=data, chart=stats.chart(data),
                        categories=stats.CATEGORIES, ranges=stats.RANGES, range_key=range_key, direction=direction,
                        domain=domain, domains=domains, quarantine=quarantine, recent=recent, health=health,
-                       cluster=cluster, learned=learned,
+                       cluster=cluster, learned=learned, queue=queue, queue_error=queue_error,
+                       resources=resources, delivery_delay=delivery_delay, delivered=delivered,
                        domain_counts={"active": sum(1 for d in scoped if d.active), "total": len(scoped)},
                        errors=errors)
 

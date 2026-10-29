@@ -31,7 +31,7 @@ import redis
 from flask import current_app
 
 from ..extensions import db
-from ..models import Directory, MailLogEntry, QuarantineItem, StatBucket, get_setting, set_setting, utcnow
+from ..models import Directory, Domain, MailLogEntry, QuarantineItem, StatBucket, get_setting, set_setting, utcnow
 from . import backups, certificates, cluster, mailer, postfix_control, store, system, tlspolicy
 from .rspamd import RspamdError, client
 
@@ -95,6 +95,38 @@ def queue_state():
         if name == "deferred" and item.get("arrival_time"):
             oldest = min(oldest or item["arrival_time"], item["arrival_time"])
     return counts, (time.time() - oldest) if oldest else 0
+
+
+def queue_directions(items=None):
+    """This node's mail queue by direction: {"inbound"|"outbound": {queue:
+    messages, "total": messages, "bytes": size}, "oldest_deferred": seconds}.
+    The direction is the mail log's (by queue ID); for mail it does not know
+    (notices to senders, mail it no longer keeps) mail to a protected domain
+    is inbound."""
+    items = postfix_control.mail_queue() if items is None else items
+    qids = sorted({str(i.get("queue_id") or "") for i in items} - {""})
+    known = {}
+    for start in range(0, len(qids), 500):
+        known.update(db.session.query(MailLogEntry.qid, MailLogEntry.direction)
+                     .filter(MailLogEntry.qid.in_(qids[start:start + 500])))
+    protected = {name for name, in db.session.query(Domain.name)}
+    result = {d: {**{name: 0 for name in QUEUES}, "total": 0, "bytes": 0} for d in ("inbound", "outbound")}
+    oldest = None
+    for item in items:
+        direction = known.get(str(item.get("queue_id") or ""))
+        if direction not in result:
+            rcpts = [str(r.get("address") or "") for r in item.get("recipients") or [] if isinstance(r, dict)]
+            inbound = any(r.rsplit("@", 1)[-1].lower() in protected for r in rcpts if "@" in r)
+            direction = "inbound" if inbound else "outbound"
+        counts = result[direction]
+        name = item.get("queue_name", "")
+        counts[name] = counts.get(name, 0) + 1
+        counts["total"] += 1
+        counts["bytes"] += int(item.get("message_size") or 0)
+        if name == "deferred" and item.get("arrival_time"):
+            oldest = min(oldest or item["arrival_time"], item["arrival_time"])
+    result["oldest_deferred"] = (time.time() - oldest) if oldest else 0
+    return result
 
 
 def _db_ok():

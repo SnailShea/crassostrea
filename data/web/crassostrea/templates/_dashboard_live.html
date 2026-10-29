@@ -32,6 +32,58 @@
   <div class="legend">{% for key, label in categories.items() %}<span><i class="{{ key }}"></i>{{ label }}</span>{% endfor %}</div>
 </div>
 
+{% macro meter(percent, text) %}
+{% if percent is none %}<span class="muted">cannot be read</span>{% else %}
+<svg class="meter" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
+  <rect class="track" width="100" height="6" rx="3"></rect>
+  <rect class="{{ 'bad' if percent >= 90 else 'warn' if percent >= 75 else 'good' }}" width="{{ [percent, 100]|min }}" height="6" rx="3"></rect>
+</svg>
+<span>{{ percent|round|int }}%{{ ' ' ~ text if text }}</span>{% endif %}
+{% endmacro %}
+<div class="grid">
+  <div class="card">
+    <h2>Processing time</h2>
+    <dl class="props">
+      <dt>Scan</dt><dd>{{ (t.scan_ms / 1000 if t.scan_ms is not none else none)|latency }}</dd>
+      <dt>Delivery</dt><dd>{{ delivery_delay|latency }}{% if delivered %} <span class="muted small">over {{ "{:,}".format(delivered) }} {{ 'delivery' if delivered == 1 else 'deliveries' }}</span>{% endif %}</dd>
+    </dl>
+    <p class="muted small">Averages of the period. Scan: rspamd's time per message. Delivery: from the message's
+      arrival until the next server accepted it, per recipient, including the time deferred mail waited.</p>
+  </div>
+  {% if queue or queue_error %}
+  <div class="card">
+    <div class="card-head"><h2>Mail queue</h2><a href="{{ url_for('queue.index') }}">Open</a></div>
+    {% if queue_error %}<p class="muted">The mail queue cannot be read: {{ queue_error }}</p>{% else %}
+    <div class="table-wrap">
+    <table>
+      <thead><tr><th>Messages</th><th class="num">Inbound</th><th class="num">Outbound</th></tr></thead>
+      <tbody>
+      {% for label, inbound, outbound in queue.rows %}
+        <tr><td>{{ label }}</td><td class="num">{{ "{:,}".format(inbound) }}</td><td class="num">{{ "{:,}".format(outbound) }}</td></tr>
+      {% endfor %}
+        <tr><th>Total</th>{% for d in ('inbound', 'outbound') %}<th class="num">{{ "{:,}".format(queue[d].total) }}{% if queue[d].total %} <span class="muted small">({{ queue[d].bytes|filesize }})</span>{% endif %}</th>{% endfor %}</tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="muted small">{% if queue.oldest_deferred %}The oldest deferred message waits {{ queue.oldest_deferred|duration }}.{% else %}No deferred mail.{% endif %}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if resources %}
+  {% set r = resources %}
+  <div class="card">
+    <h2>System load</h2>
+    <dl class="props meters">
+      <dt>CPU</dt><dd>{{ meter(r.cpu_percent, '') }}{% if r.load %}<div class="muted small">load {{ r.load|join(' / ') }}{% if r.cpus %} on {{ r.cpus }} CPUs{% endif %}</div>{% endif %}</dd>
+      <dt>Memory</dt><dd>{{ meter(r.memory.percent if r.memory else none, ('of ' ~ (r.memory.total_bytes|filesize)) if r.memory else '') }}</dd>
+      {% for d in r.disks %}
+      <dt class="mono">{{ d.path }}</dt><dd>{{ meter(d.used_percent, '· ' ~ (d.free_bytes|filesize) ~ ' free of ' ~ (d.total_bytes|filesize)) }}</dd>
+      {% endfor %}
+    </dl>
+  </div>
+  {% endif %}
+</div>
+
 <div class="grid">
   <div class="card">
     <div class="card-head"><h2>Quarantine</h2><a href="{{ url_for('quarantine.index', domain=domain or None) }}">Open</a></div>

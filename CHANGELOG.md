@@ -16,6 +16,30 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-29
+
+### Added
+
+- **Bans for scanners and exploit attempts.** netfilter's rules each have
+  their own number of matches (`F2B_REGEX`: `regex` and `attempts`). New
+  rules ban at once for a request for secrets, version control or other
+  applications in nginx's access log (`/.env`, `/.git/`, `*.php`, WordPress,
+  ...), for a request only an exploit sends (the web UI refuses Next.js
+  server action headers and prototype pollution, e.g. CVE-2025-55182), and
+  for HTTP or TLS on port 25 (postscreen `NON-SMTP COMMAND`); after 3 for
+  postscreen's `PREGREET`, bare newlines and pipelining, and for open relay
+  tests (`Relay access denied`).
+- nginx writes its access log to the journal as well (tag
+  `crassostrea_access`; the Logs page, nginx), which logship forwards to
+  netfilter. `sudo system/configure.sh` applies it.
+- **Dashboard: processing time, mail queue and system load.** The average
+  scan time and delivery time (arrival to delivery, Postfix's `delay`) of
+  the period, with its filters; for full administrators the node's mail
+  queue inbound and outbound (being delivered, deferred, on hold) and its use
+  of CPU, memory and each filesystem. `init-db` adds the columns
+  (`stats_hourly.scan_ms`, `mail_delivery.delay`); both averages start with
+  this update. `GET /api/v1/statistics` returns `scan_ms` in its totals.
+
 ## [0.3.0] - 2026-10-28
 
 ### Added
@@ -130,7 +154,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/SnailShea/crassostrea/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SnailShea/crassostrea/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SnailShea/crassostrea/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/SnailShea/crassostrea/compare/v0.1.1...v0.2.0

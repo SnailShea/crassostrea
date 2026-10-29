@@ -721,6 +721,13 @@ acme_locations() {
   echo '  }'
 }
 
+# The access log, and the same lines to the journal for netfilter's rules
+# against scanners (system/libexec/logship follows the tag)
+nginx_access_logs() {
+  echo "  access_log /var/log/nginx/access.log sf_main;"
+  echo "  access_log syslog:server=unix:/dev/log,tag=crassostrea_access,severity=info,nohostname sf_main;"
+}
+
 render_nginx() {
   local http_port=${HTTP_PORT:-80} https_port=${HTTPS_PORT:-443} locations redirect
   [[ ${http_port} =~ ^[0-9]+$ && ${https_port} =~ ^[0-9]+$ ]] || die "HTTP_PORT and HTTPS_PORT must be numbers"
@@ -813,7 +820,7 @@ $(acme_locations)
     echo "# every name, see system/lib/nginx.sh)"
     echo "server {"
     nginx_listen "${http_port}" "${HTTP_BIND}" default_server
-    echo "  access_log /var/log/nginx/access.log sf_main;"
+    nginx_access_logs
     echo "  include ${NGINX_REAL_IP_CONF};"
     acme_locations
     echo '  location / {'
@@ -824,7 +831,7 @@ $(acme_locations)
     echo "server {"
     nginx_listen "${https_port}" "${HTTPS_BIND}" ssl default_server
     echo "  http2 on;"
-    echo "  access_log /var/log/nginx/access.log sf_main;"
+    nginx_access_logs
     echo "  include ${NGINX_REAL_IP_CONF};"
     nginx_tls_lines
     echo '  location / {'
@@ -836,7 +843,7 @@ $(acme_locations)
     echo "server {"
     nginx_listen "${http_port}" "${HTTP_BIND}"
     echo "  include ${NGINX_NAMES_CONF};"
-    echo "  access_log /var/log/nginx/access.log sf_main;"
+    nginx_access_logs
     echo "  include ${NGINX_REAL_IP_CONF};"
     echo '  if ($sf_https_redirect) {'
     echo "    return 301 ${redirect};"
@@ -848,7 +855,7 @@ $(acme_locations)
     nginx_listen "${https_port}" "${HTTPS_BIND}" ssl
     echo "  include ${NGINX_NAMES_CONF};"
     echo "  http2 on;"
-    echo "  access_log /var/log/nginx/access.log sf_main;"
+    nginx_access_logs
     echo "  include ${NGINX_REAL_IP_CONF};"
     nginx_tls_lines
     echo "  add_header Strict-Transport-Security \"max-age=15768000\" always;"

@@ -5,7 +5,8 @@ longer than the mail log itself. The first start after an update fills the
 counts from the mail log once.
 
 Outcomes: clean (no action), spam (marked: add header, rewrite subject),
-deferred (greylist, soft reject) and rejected; viruses are counted besides.
+deferred (greylist, soft reject) and rejected; viruses and rspamd's scan
+time are counted besides.
 Mail refused before rspamd saw it (postscreen, unknown recipients) is not
 in here.
 """
@@ -38,12 +39,12 @@ def _domain(direction, sender, rcpts, protected):
     return next((d for d in domains if d in protected), domains[0] if domains else "")
 
 
-def _upsert(hour, domain, direction, cat, messages, size, viruses):
+def _upsert(hour, domain, direction, cat, messages, size, viruses, scan_ms):
     table = StatBucket.__table__
     values = {"hour": hour, "domain": domain[:253], "direction": direction, "category": cat, "messages": messages,
-              "bytes": size, "viruses": viruses}
+              "bytes": size, "viruses": viruses, "scan_ms": scan_ms}
     increments = {"messages": table.c.messages + messages, "bytes": table.c.bytes + size,
-                  "viruses": table.c.viruses + viruses}
+                  "viruses": table.c.viruses + viruses, "scan_ms": table.c.scan_ms + scan_ms}
     if db.engine.dialect.name in ("mysql", "mariadb"):
         from sqlalchemy.dialects.mysql import insert
         statement = insert(table).values(**values).on_duplicate_key_update(**increments)
@@ -58,7 +59,7 @@ def record(entry):
     """Count a mail log entry (in the caller's transaction)."""
     protected = {name for name, in db.session.query(Domain.name)}
     _upsert(_hour(entry.created_at or utcnow()), _domain(entry.direction, entry.sender, entry.rcpt_list, protected),
-            entry.direction, category(entry.action), 1, entry.size or 0, int(entry.is_virus))
+            entry.direction, category(entry.action), 1, entry.size or 0, int(entry.is_virus), entry.scan_ms or 0)
 
 
 def cleanup():
@@ -70,16 +71,20 @@ def cleanup():
 
 def series(range_key="7d", domain="", direction="", now=None, domains=None):
     """Bars of the range: {"buckets": [{start, clean, spam, deferred, rejected,
-    viruses, total}], "totals": {...}, "top": [(domain, messages)]};
-    ``domains`` limits them to those domains (a domain administrator's)."""
+    viruses, total}], "totals": {..., scan_ms: average scan time or None},
+    "top": [(domain, messages)]}; ``domains`` limits them to those domains (a
+    domain administrator's)."""
     length, size = RANGES[range_key]
     now = _hour(now or utcnow()) + timedelta(hours=1)
     start = now - length
     # align buckets of a day or more to midnight
     if size >= 24:
         start = start.replace(hour=0)
+    # the average scan time leaves out hours without one (rspamd did not report it)
+    timed = db.func.sum(db.case((StatBucket.scan_ms > 0, StatBucket.messages), else_=0))
     query = db.session.query(StatBucket.hour, StatBucket.category, db.func.sum(StatBucket.messages),
-                             db.func.sum(StatBucket.viruses), db.func.sum(StatBucket.bytes)
+                             db.func.sum(StatBucket.viruses), db.func.sum(StatBucket.bytes),
+                             db.func.sum(StatBucket.scan_ms), timed
                              ).filter(StatBucket.hour >= start, StatBucket.hour < now)
     if domain:
         query = query.filter(StatBucket.domain == domain)
@@ -91,7 +96,9 @@ def series(range_key="7d", domain="", direction="", now=None, domains=None):
     buckets = [{"start": start + timedelta(hours=i * size), **{c: 0 for c in CATEGORIES}, "viruses": 0, "total": 0}
                for i in range(count)]
     totals = {**{c: 0 for c in CATEGORIES}, "viruses": 0, "total": 0, "bytes": 0}
-    for hour, cat, messages, viruses, total_bytes in query.group_by(StatBucket.hour, StatBucket.category):
+    scan_ms = scanned = 0
+    for hour, cat, messages, viruses, total_bytes, ms, timed_messages in query.group_by(StatBucket.hour,
+                                                                                          StatBucket.category):
         index = min(int((hour - start).total_seconds() // 3600) // size, count - 1)
         bucket = buckets[index]
         bucket[cat] += int(messages or 0)
@@ -101,6 +108,9 @@ def series(range_key="7d", domain="", direction="", now=None, domains=None):
         totals["viruses"] += int(viruses or 0)
         totals["total"] += int(messages or 0)
         totals["bytes"] += int(total_bytes or 0)
+        scan_ms += int(ms or 0)
+        scanned += int(timed_messages or 0)
+    totals["scan_ms"] = round(scan_ms / scanned) if scanned else None
     top = (db.session.query(StatBucket.domain, db.func.sum(StatBucket.messages))
            .filter(StatBucket.hour >= start, StatBucket.hour < now, StatBucket.domain != ""))
     if direction:

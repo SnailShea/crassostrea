@@ -1493,7 +1493,10 @@ def _operations_schemas():
         "StatisticsCounts": {"type": "object", "properties": {
             "total": {"type": "integer"}, "clean": {"type": "integer"}, "spam": {"type": "integer"},
             "deferred": {"type": "integer"}, "rejected": {"type": "integer"}, "viruses": {"type": "integer"},
-            "bytes": {"type": "integer", "description": "Only in totals"}}},
+            "bytes": {"type": "integer", "description": "Only in totals"},
+            "scan_ms": {"type": "integer", "nullable": True,
+                        "description": "Only in totals: rspamd's average scan time per message (milliseconds), "
+                                       "null without one"}}},
         "DmarcReport": {"type": "object", "properties": {
             "id": ID, "org": {"type": "string"}, "report_id": {"type": "string"}, "domain": {"type": "string"},
             "policy": {"type": "string"}, "begin": TIMESTAMP, "end": TIMESTAMP, "messages": {"type": "integer"},

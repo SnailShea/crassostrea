@@ -48,8 +48,10 @@ def create_app(role="ui", config=None):
 
     # Admin UI behind nginx
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
-    csrf.init_app(app)
     login_manager.init_app(app)
+    from .services import exploits
+    exploits.init_app(app)
+    csrf.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.login_message_category = "info"
     login_manager.session_protection = "strong"

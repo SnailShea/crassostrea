@@ -117,6 +117,7 @@ def test_statistics_and_reports(dana, world):
     # neither in the domain filter nor in the busiest domains
     assert 'value="other.example"' not in page and ">other.example</a>" not in page
     assert "Health" not in page and "Messages learned" not in page  # full administrators only
+    assert "Mail queue" not in page and "System load" not in page and "Processing time" in page
     page = dana.get("/?range=24h&domain=other.example").get_data(as_text=True)
     assert '<div class="value">3</div>' in page
     page = dana.get("/reports/").get_data(as_text=True)

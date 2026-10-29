@@ -44,7 +44,13 @@ def _line(message, identifier="postfix/relay/smtp", when=NOW):
     ("45505A0702: to=<alma@eoltestdomain.com>, relay=mail.eoltestdomain.com[192.0.2.10]:25, delay=5.6, "
      "delays=0.01/0.02/4.4/1.2, dsn=2.0.0, status=sent (250 2.0.0 Ok: queued as C03C0A0176)", "postfix/relay/smtp",
      {"kind": "delivery", "qid": "45505A0702", "rcpt": "alma@eoltestdomain.com", "status": "sent", "dsn": "2.0.0",
-      "relay": "mail.eoltestdomain.com[192.0.2.10]:25", "detail": "250 2.0.0 Ok: queued as C03C0A0176"}),
+      "relay": "mail.eoltestdomain.com[192.0.2.10]:25", "detail": "250 2.0.0 Ok: queued as C03C0A0176",
+      "delay": 5.6}),
+    # a reused connection
+    ("45505A0702: to=<b@example.org>, relay=mx.example.org[198.51.100.2]:25, conn_use=2, delay=0.4, "
+     "delays=0.1/0/0/0.3, dsn=2.0.0, status=sent (250 Ok)", "postfix/smtp",
+     {"kind": "delivery", "qid": "45505A0702", "rcpt": "b@example.org", "status": "sent", "dsn": "2.0.0",
+      "relay": "mx.example.org[198.51.100.2]:25", "detail": "250 Ok", "delay": 0.4}),
     # a long queue ID, orig_to, a refusal with nested parentheses
     ("4ZtX1m2bQqz9Pk3: to=<bob@example.org>, orig_to=<Bob@Example.org>, relay=mx.example.org[198.51.100.2]:25, "
      "delay=1.1, delays=0/0/0.5/0.6, dsn=5.1.1, status=bounced (host mx.example.org[198.51.100.2] said: 550 5.1.1 "
@@ -52,11 +58,12 @@ def _line(message, identifier="postfix/relay/smtp", when=NOW):
      {"kind": "delivery", "qid": "4ZtX1m2bQqz9Pk3", "rcpt": "bob@example.org", "status": "bounced", "dsn": "5.1.1",
       "relay": "mx.example.org[198.51.100.2]:25",
       "detail": "host mx.example.org[198.51.100.2] said: 550 5.1.1 <bob@example.org>: User unknown (in reply to "
-                "RCPT TO command)"}),
+                "RCPT TO command)", "delay": 1.1}),
     ("4ZtX1m2bQqz9Pk3: to=<c@example.org>, relay=none, delay=30, delays=0/0/30/0, dsn=4.4.1, status=deferred "
      "(connect to mx.example.org[198.51.100.2]:25: Connection timed out)", "postfix/smtp",
      {"kind": "delivery", "qid": "4ZtX1m2bQqz9Pk3", "rcpt": "c@example.org", "status": "deferred", "dsn": "4.4.1",
-      "relay": "none", "detail": "connect to mx.example.org[198.51.100.2]:25: Connection timed out"}),
+      "relay": "none", "detail": "connect to mx.example.org[198.51.100.2]:25: Connection timed out",
+      "delay": 30.0}),
     ("4ZtX1m2bQqz9Pk3: sender non-delivery notification: 4ZtX1n7cRrz2Lm8", "postfix/bounce",
      {"kind": "bounce_notice", "qid": "4ZtX1m2bQqz9Pk3", "notice_qid": "4ZtX1n7cRrz2Lm8"}),
     ("4ZtX1m2bQqz9Pk3: sender delay notification: 4ZtX1p0dSsz4Nn1", "postfix/bounce",
@@ -168,6 +175,31 @@ def test_filter(app):
     for state, expected in (("delivered", [delivered.id]), ("deferred", [deferred.id]), ("bounced", [bounced.id])):
         assert [e.id for e in maillog.filtered(delivery=state)] == expected
     assert maillog.filtered(delivery="nonsense").count() == 4
+
+
+def test_average_delay(app):
+    _entry(qid="AAAAAA1111", rcpts="bob@example.org,c@example.org")
+    _entry(qid="BBBBBB2222", rcpts="x@partner.example,y@partner.example", direction="outbound")
+    deliveries.record(_event(qid="AAAAAA1111", delay=2.0))
+    deliveries.record(_event(qid="AAAAAA1111", rcpt="c@example.org", delay=4))
+    deliveries.record(_event(qid="BBBBBB2222", rcpt="x@partner.example", delay=60.0))
+    # still waiting: not delivered
+    deliveries.record(_event(qid="BBBBBB2222", rcpt="y@partner.example", status="deferred", dsn="4.4.1", delay=900))
+    deliveries.record(_event(qid="CCCCCC3333", delay=1.0))  # not in the mail log
+    db.session.commit()
+    start, end = _at(3600), _at(-60)
+    assert deliveries.average_delay(start, end) == (22.0, 3)
+    assert deliveries.average_delay(start, end, direction="inbound") == (3.0, 2)
+    assert deliveries.average_delay(start, end, domain="partner.example") == (60.0, 1)
+    assert deliveries.average_delay(start, end, domains={"example.org"}) == (3.0, 2)
+    assert deliveries.average_delay(start, end, domains=set()) == (None, 0)
+    assert deliveries.average_delay(_at(-60), _at(-120)) == (None, 0)
+
+
+@pytest.mark.parametrize("delay, stored", [(5.6, 5.6), (0, 0.0), (None, None), ("5", None), (True, None), (-1, None),
+                                           (10 ** 9, None)])
+def test_record_keeps_a_plausible_delay(app, delay, stored):
+    assert deliveries.record(_event(delay=delay)).delay == stored
 
 
 def test_internal_api(internal_app):

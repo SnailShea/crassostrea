@@ -5,8 +5,10 @@ system/libexec/logship reads them from the Postfix log of its node and posts
 them to /internal/delivery (``record``):
 
 - ``delivery``: a delivery attempt to a recipient: sent, deferred or bounced,
-  with the relay, the DSN code and the remote server's answer. One row per
-  queue ID and recipient keeps the latest attempt and counts them.
+  with the relay, the DSN code, the remote server's answer and Postfix's
+  delay (seconds since the message arrived). One row per queue ID and
+  recipient keeps the latest attempt and counts them; the dashboard averages
+  the delay of the sent ones (``average_delay``).
 - ``bounce_notice``, ``delay_notice``, ``dsn_notice``: Postfix sent the sender
   a non-delivery notice, a delay warning or a delivery status notification.
   The notice is a message of its own (``notice_qid``); its delivery is
@@ -43,7 +45,7 @@ STATES = ("delivered", "deferred", "bounced")
 
 def record(event, now=None):
     """Store one event of logship: {time, qid, kind, rcpt, status, dsn,
-    relay, detail, notice_qid}. Returns the row, or None if invalid."""
+    relay, detail, delay, notice_qid}. Returns the row, or None if invalid."""
     now = now or utcnow()
     try:
         moment = datetime.fromtimestamp(int(event["time"]), timezone.utc).replace(tzinfo=None)
@@ -55,11 +57,11 @@ def record(event, now=None):
         return None
     if not now - timedelta(days=MAX_MAILLOG_DAYS) <= moment <= now + timedelta(minutes=5):
         return None
-    values = {"status": "", "dsn": "", "relay": "", "detail": "", "notice_qid": "", "rcpt": ""}
+    values = {"status": "", "dsn": "", "relay": "", "detail": "", "notice_qid": "", "rcpt": "", "delay": None}
     if kind == "delivery":
         values.update(rcpt=str(event.get("rcpt") or "").strip().lower(), status=str(event.get("status") or ""),
                       dsn=str(event.get("dsn") or ""), relay=str(event.get("relay") or "")[:255],
-                      detail=" ".join(str(event.get("detail") or "").split())[:500])
+                      detail=" ".join(str(event.get("detail") or "").split())[:500], delay=_delay(event.get("delay")))
         if (values["status"] not in DELIVERY_STATUSES or not DSN_RE.match(values["dsn"])
                 or not 0 < len(values["rcpt"]) <= 320 or any(c.isspace() or c in "<>" for c in values["rcpt"])):
             return None
@@ -88,6 +90,29 @@ def record(event, now=None):
         except IntegrityError:  # another worker added it meanwhile
             db.session.rollback()
     return None
+
+
+def _delay(value):
+    """Seconds, or None when missing or not a plausible delay."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value) if 0 <= value <= MAX_MAILLOG_DAYS * 86400 else None
+
+
+def average_delay(start, end, direction="", domain="", domains=None):
+    """(average seconds, deliveries) from arrival to delivery of the logged
+    mail's recipients delivered between start and end, with the mail log's
+    filters; (None, 0) without any."""
+    from . import maillog
+    query = (maillog.filtered(direction=direction, domain=domain, domains=domains).order_by(None)
+             .join(MailDelivery, db.and_(MailDelivery.qid == MailLogEntry.qid, MailLogEntry.qid != ""))
+             .filter(MailDelivery.kind == "delivery", MailDelivery.status == "sent", MailDelivery.delay.isnot(None),
+                     MailDelivery.last_at >= start, MailDelivery.last_at < end,
+                     # a reused short queue ID: only its own message (see WINDOW)
+                     MailLogEntry.created_at >= start - WINDOW[1], MailLogEntry.created_at < end + WINDOW[0])
+             .with_entities(db.func.avg(MailDelivery.delay), db.func.count(MailDelivery.id)))
+    average, count = query.one()
+    return (float(average) if count else None), int(count or 0)
 
 
 def _rows(qid, around):

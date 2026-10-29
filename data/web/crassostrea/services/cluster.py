@@ -52,8 +52,6 @@ PROMOTE_SECONDS = 300
 # Different versions are normal while the nodes are updated one by one
 VERSION_GRACE_SECONDS = 3600
 DISK_WARN_PERCENT = 90
-# Filesystems whose use is reported (each one once)
-DISK_PATHS = ("/", "/var", "/var/lib/mysql", "/var/spool/postfix")
 # A join information works once, for this long
 JOIN_SECONDS = 3600
 JOIN_PREFIX = "sfjoin1."
@@ -159,31 +157,6 @@ def version():
     return lines[0].strip()[:64], deployed
 
 
-def _memory():
-    info = {}
-    with open("/proc/meminfo", encoding="ascii") as fh:
-        for line in fh:
-            key, _, value = line.partition(":")
-            info[key] = int(value.split()[0])
-    total = info.get("MemTotal") or 0
-    return round(100.0 * (total - info.get("MemAvailable", 0)) / total, 1) if total else None
-
-
-def _disk():
-    seen, result = set(), []
-    for path in DISK_PATHS:
-        try:
-            st = os.statvfs(path)
-        except OSError:
-            continue
-        if st.f_fsid in seen or not st.f_blocks:
-            continue
-        seen.add(st.f_fsid)
-        used = 100.0 * (st.f_blocks - st.f_bfree) / (st.f_blocks - st.f_bfree + st.f_bavail)
-        result.append({"path": path, "used_percent": round(used, 1), "free_bytes": st.f_bavail * st.f_frsize})
-    return result
-
-
 def _uptime():
     with open("/proc/uptime", encoding="ascii") as fh:
         return int(float(fh.read().split()[0]))
@@ -207,6 +180,7 @@ def _scanned():
 
 def collect():
     """This node's report (stored as JSON in cluster_reports)."""
+    from . import system
     name, deployed = version()
     return {
         "version": name, "deployed_at": deployed,
@@ -217,8 +191,8 @@ def collect():
         "scanned": _try(_scanned),
         "load": _try(lambda: [round(x, 2) for x in os.getloadavg()]),
         "cpus": os.cpu_count(),
-        "memory_percent": _try(_memory),
-        "disk": _try(_disk, []),
+        "memory_percent": _try(lambda: system.memory()["percent"]),
+        "disk": _try(system.disks, []),
         "uptime": _try(_uptime),
     }
 

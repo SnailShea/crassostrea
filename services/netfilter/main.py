@@ -90,17 +90,35 @@ def verifyF2boptions(f2boptions):
 def verifyF2boption(f2boptions, f2boption, f2bdefault):
   f2boptions[f2boption] = f2boptions[f2boption] if f2boption in f2boptions and f2boptions[f2boption] is not None else f2bdefault
 
+# The rules of the web UI (data/web/crassostrea/services/store.py F2B_REGEX,
+# tested to be the same), written to F2B_REGEX when the key is missing. A
+# rule's attempts: the matches that ban within the retry window (default:
+# max_attempts of F2B_OPTIONS)
+DEFAULT_F2B_REGEX = {
+  "1": {"regex": r"Crassostrea UI: Invalid password for .+ by ([0-9a-f\.:]+)"},
+  "2": {"regex": r"warning: non-SMTP command from .*\[([0-9a-f\.:]+)]:.+"},
+  "3": {"regex": r"NOQUEUE: reject: RCPT from \[([0-9a-f\.:]+)].+Protocol error.+"},
+  "4": {"regex": r"Crassostrea API: Invalid API key by ([0-9a-f\.:]+)"},
+  "5": {"regex": r"Crassostrea UI: Exploit attempt by ([0-9a-f\.:]+)", "attempts": 1},
+  "6": {"regex": r"NON-SMTP COMMAND from \[([0-9a-f\.:]+)\]", "attempts": 1},
+  "7": {"regex": r"(?:PREGREET \d+ after [0-9.]+|BARE NEWLINE|COMMAND PIPELINING) from \[([0-9a-f\.:]+)\]",
+        "attempts": 3},
+  "8": {"regex": r"NOQUEUE: reject: RCPT from [^\[\s]*\[([0-9a-f\.:]+)\](?::\d+)?: 554 5\.7\.1 <[^>]*>: "
+                 r"Relay access denied", "attempts": 3},
+  "9": {"regex": r'(?i)^([0-9a-f\.:]+) - \S+ \[[^\]]*\] "[A-Z]+ [^" ]*?(?:'
+                 r"/\.(?:env|git|svn|hg|aws|ssh|DS_Store|htaccess|htpasswd|vscode|idea|docker)"
+                 r"|credentials\.json|service-account\.json|/\.?secrets?\.|/config\.(?:js|json|ya?ml)(?:[?# ]|$)"
+                 r"|\.php(?:[/?#. ]|$)|/wp-(?:admin|login|content|includes|config|json)|/wordpress/|/wp/|/cgi-bin/"
+                 r"|/_profiler|/actuator|/server-status|/vendor/phpunit|/phpmyadmin|/boaform|/HNAP1)",
+        "attempts": 1},
+}
+
 def refreshF2bregex():
   global f2bregex
   global quit_now
   global exit_code
   if not r.get('F2B_REGEX'):
-    # the rules of the web UI (data/web/crassostrea/services/store.py F2B_REGEX)
-    f2bregex = {}
-    f2bregex[1] = r'Crassostrea UI: Invalid password for .+ by ([0-9a-f\.:]+)'
-    f2bregex[2] = r'warning: non-SMTP command from .*\[([0-9a-f\.:]+)]:.+'
-    f2bregex[3] = r'NOQUEUE: reject: RCPT from \[([0-9a-f\.:]+)].+Protocol error.+'
-    f2bregex[4] = r'Crassostrea API: Invalid API key by ([0-9a-f\.:]+)'
+    f2bregex = DEFAULT_F2B_REGEX
     r.set('F2B_REGEX', json.dumps(f2bregex, ensure_ascii=False))
   else:
     try:
@@ -111,6 +129,25 @@ def refreshF2bregex():
       quit_now = True
       exit_code = 2
 
+def rule_of(rule):
+  """(pattern, attempts or None) of a rule: an object, or a bare pattern."""
+  if isinstance(rule, dict):
+    attempts = rule.get('attempts')
+    return rule.get('regex') or '', int(attempts) if attempts else None
+  return str(rule), None
+
+def match(line):
+  """(address, rule id, attempts) of the first rule that matches, or None."""
+  for rule_id, rule in f2bregex.items():
+    try:
+      regex, attempts = rule_of(rule)
+      result = re.search(regex, line)
+    except (re.error, ValueError, TypeError):
+      continue
+    if result:
+      return result.group(1), rule_id, attempts
+  return None
+
 def get_ip(address):
   ip = ipaddress.ip_address(address)
   if type(ip) is ipaddress.IPv6Address and ip.ipv4_mapped:
@@ -120,12 +157,12 @@ def get_ip(address):
 
   return ip
 
-def ban(address):
+def ban(address, attempts=None):
   global f2boptions
   global lock
   logdebug("ban() called with address=%s" % address)
   refreshF2boptions()
-  MAX_ATTEMPTS = int(f2boptions['max_attempts'])
+  MAX_ATTEMPTS = attempts or int(f2boptions['max_attempts'])
   RETRY_WINDOW = int(f2boptions['retry_window'])
   NETBAN_IPV4 = '/' + str(f2boptions['netban_ipv4'])
   NETBAN_IPV6 = '/' + str(f2boptions['netban_ipv6'])
@@ -276,20 +313,20 @@ def watch():
   while not quit_now:
     try:
       for item in pubsub.listen():
+        if not item['data'] or item['type'] != 'message':
+          continue
         refreshF2bregex()
-        for rule_id, rule_regex in f2bregex.items():
-          if item['data'] and item['type'] == 'message':
-            try:
-              result = re.search(rule_regex, item['data'])
-            except re.error:
-              result = False
-            if result:
-              addr = result.group(1)
-              ip = ipaddress.ip_address(addr)
-              if ip.is_private or ip.is_loopback:
-                continue
-              logger.logWarn('%s matched rule id %s (%s)' % (addr, rule_id, item['data']))
-              ban(addr)
+        found = match(item['data'])
+        if found:
+          addr, rule_id, attempts = found
+          try:
+            ip = ipaddress.ip_address(addr)
+          except ValueError:
+            continue
+          if ip.is_private or ip.is_loopback:
+            continue
+          logger.logWarn('%s matched rule id %s (%s)' % (addr, rule_id, item['data']))
+          ban(addr, attempts)
     except Exception as ex:
       logger.logWarn('Error reading log line from pubsub: %s' % ex)
       pubsub = None

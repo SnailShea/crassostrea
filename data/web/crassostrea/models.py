@@ -388,6 +388,8 @@ class StatBucket(db.Model):
     messages = db.Column(db.Integer, nullable=False, default=0)
     bytes = db.Column(db.BigInteger, nullable=False, default=0)
     viruses = db.Column(db.Integer, nullable=False, default=0)
+    # rspamd's scan time of the messages, summed (milliseconds)
+    scan_ms = db.Column(db.BigInteger, nullable=False, default=0, server_default="0")
 
 
 class DmarcReport(db.Model):
@@ -582,6 +584,8 @@ class MailDelivery(db.Model):
     detail = db.Column(db.String(500), nullable=False, default="")
     notice_qid = db.Column(db.String(32), nullable=False, default="")
     attempts = db.Column(db.Integer, nullable=False, default=1)
+    # Postfix's delay of the latest attempt: seconds since the message arrived
+    delay = db.Column(db.Float)
     first_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     last_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
 

@@ -11,9 +11,10 @@ from crassostrea.services import stats
 RAW = b"From: a@sender.example\r\nTo: bob@example.com\r\nSubject: Hi\r\n\r\nHello\r\n"
 
 
-def post(internal_app, action="no action", rcpt="bob@example.com", sender="a@sender.example", symbols=None):
+def post(internal_app, action="no action", rcpt="bob@example.com", sender="a@sender.example", symbols=None,
+         **meta):
     meta = {"qid": "Q1", "from": sender, "rcpt": [rcpt], "score": 1.0, "action": action, "ip": "203.0.113.5",
-            "symbols": symbols or [{"name": "BAYES_HAM", "score": -1}]}
+            "symbols": symbols or [{"name": "BAYES_HAM", "score": -1}], **meta}
     return internal_app.test_client().post(
         "/internal/mail-log", data={"metadata": json.dumps(meta), "message": (io.BytesIO(RAW), "message")},
         environ_base={"REMOTE_ADDR": "172.22.1.5"})
@@ -61,6 +62,31 @@ def test_series(app):
     tall = chart["bars"][-2]
     assert chart["peak"] == 13 and [s[0] for s in tall["segments"]] == ["clean", "rejected"]
     assert round(sum(s[2] for s in tall["segments"])) == chart["height"]
+
+
+def test_scan_time(internal_app, app):
+    for scan_time in (80, 120, 0):  # 0: rspamd did not report it
+        post(internal_app, scan_time=scan_time)
+    bucket, = StatBucket.query.all()
+    assert (bucket.messages, bucket.scan_ms) == (3, 200)
+    now = utcnow()
+    # an hour without scan times (counted before they were) is left out of the average
+    db.session.add(StatBucket(hour=(now - timedelta(hours=2)).replace(minute=0, second=0, microsecond=0), domain="",
+                              direction="inbound", category="clean", messages=50, bytes=0, viruses=0))
+    db.session.commit()
+    assert stats.series("24h", now=now)["totals"]["scan_ms"] == 67
+    assert stats.series("24h", direction="outbound", now=now)["totals"]["scan_ms"] is None
+
+
+def test_init_db_adds_the_new_columns(app):
+    for table, column in (("stats_hourly", "scan_ms"), ("mail_delivery", "delay")):
+        with db.engine.begin() as conn:
+            conn.execute(db.text(f"ALTER TABLE {table} DROP COLUMN {column}"))
+    output = app.test_cli_runner().invoke(args=["init-db"]).output
+    assert "added stats_hourly.scan_ms" in output and "added mail_delivery.delay" in output
+    db.session.add(StatBucket(hour=utcnow(), domain="", direction="inbound", category="clean", messages=1))
+    db.session.commit()
+    assert StatBucket.query.one().scan_ms == 0
 
 
 def test_retention(app):

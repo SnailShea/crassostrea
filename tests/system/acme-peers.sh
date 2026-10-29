@@ -4,12 +4,14 @@
 # one node has is answered by the other one too (names shared by the nodes),
 # without forwarding loops. Only the node's own names reach the web UI; other
 # names and addresses get 404, ACME challenges excepted. mx1 serves the
-# documentation at /docs/ to whoever the web UI (a stub here) lets in.
+# documentation at /docs/ to whoever the web UI (a stub here) lets in. The
+# access log reaches the journal (here a syslog socket) for netfilter's rules.
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 NGINX=${PKG}/usr/sbin/nginx
 
 cluster_addresses 10.0.0.1 10.0.0.2
 declare -A ROOT=([1]=${NODES}/mx1 [2]=${NODES}/mx2)
+receivers=()
 for n in 1 2; do
   N=${WORK}/acme${n}
   rm -rf "${N}"
@@ -37,7 +39,17 @@ EOF
       -e "s#listen 80\([ ;]\)#listen 10.0.0.${n}:80\1#" \
       -e "s#listen 443 #listen 10.0.0.${n}:443 #" \
       -e "/listen \[::\]/d" -e "s#listen 127.0.0.1:8008;#listen 127.0.0.${n}:8008;#" \
+      -e "s#unix:/dev/log#unix:${N}/syslog.sock#" \
       "${ROOT[$n]}/etc/nginx/conf.d/crassostrea.conf" > "${N}/conf.d/crassostrea.conf"
+  # journald's /dev/log: one datagram per line
+  python3 -c 'import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+s.bind(sys.argv[1])
+with open(sys.argv[2], "ab", 0) as out:
+    while True:
+        out.write(s.recv(65536) + b"\n")' "${N}/syslog.sock" "${N}/logs/syslog" &
+  receivers+=($!)
+  sleep 0.3
   "${NGINX}" -c "${N}/nginx.conf" -p "${N}" -e "${N}/logs/error.log" || echo "FAIL nginx ${n} does not start"
 done
 echo "token-from-mx1" > "${WORK}/acme1/acme/.well-known/acme-challenge/tok1"
@@ -77,6 +89,31 @@ check "the Rspamd UI: refused outside its networks" \
 check "the Rspamd UI: open to its networks (behind a trusted proxy)" \
   "[[ \$(status -H 'X-Forwarded-For: 192.0.2.1' --resolve mx2.example.com:443:10.0.0.2 https://mx2.example.com/rspamd/) == 502 ]]"
 check "a trusted proxy's client address is logged" "grep -q '^192.0.2.1 ' ${N}/logs/access.log"
+
+# Scanners: the access log in the journal, matched by netfilter's rule
+status http://10.0.0.1/.env > /dev/null
+status --resolve mx1.example.com:443:10.0.0.1 https://mx1.example.com/wp-login.php > /dev/null
+status --resolve mx1.example.com:443:10.0.0.1 https://mx1.example.com/login > /dev/null
+sleep 0.5
+S1=${WORK}/acme1/logs/syslog
+check "the access log reaches the journal with its tag" \
+  "grep -q 'crassostrea_access: 10.0.0.1 - - \[.*\] \"GET /.env HTTP/1.1\" 404' ${S1}"
+# netfilter's rule 9 (services/netfilter/main.py) on these lines
+# shellcheck disable=SC2034 # used in the checks below
+probes=$(python3 - "${REPO}/services/netfilter/main.py" "${S1}" <<'PYEOF2'
+import ast, re, sys
+tree = ast.parse(open(sys.argv[1]).read())
+rules = next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+             and getattr(node.targets[0], "id", "") == "DEFAULT_F2B_REGEX")
+for line in open(sys.argv[2], errors="replace"):
+    message = line.split("crassostrea_access: ", 1)[-1].strip()
+    if re.search(rules["9"]["regex"], message):
+        print(message.split('"')[1])
+PYEOF2
+)
+check "the scanners' requests match the probe rule" \
+  "grep -q 'GET /.env ' <<< \"\${probes}\" && grep -q 'GET /wp-login.php ' <<< \"\${probes}\""
+check "the login page does not" "! grep -q 'GET /login ' <<< \"\${probes}\""
 
 # A cluster of one node has no peers: nginx must accept its configuration
 # (it refuses an upstream without servers)
@@ -126,4 +163,5 @@ kill "${stub}"
 for n in 1 2; do
   "${NGINX}" -c "${WORK}/acme${n}/nginx.conf" -p "${WORK}/acme${n}" -e "${WORK}/acme${n}/logs/error.log" -s stop
 done
+kill "${receivers[@]}"
 finish

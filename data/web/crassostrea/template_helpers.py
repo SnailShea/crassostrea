@@ -50,6 +50,17 @@ def _filesize(value):
     return f"{value:.1f} GiB"
 
 
+def _latency(seconds):
+    """A processing time: 320 ms, 4.2 s, 12 min."""
+    if seconds is None:
+        return "–"
+    if seconds < 1:
+        return f"{seconds * 1000:.0f} ms"
+    if seconds < 120:
+        return f"{seconds:.1f} s"
+    return duration(seconds)
+
+
 def _action_class(action):
     return {
         "reject": "bad",
@@ -85,6 +96,7 @@ def register(app):
     app.jinja_env.filters["explain_symbol"] = explain_symbol
     app.jinja_env.filters["filesize"] = _filesize
     app.jinja_env.filters["duration"] = lambda value: "–" if value is None else duration(value)
+    app.jinja_env.filters["latency"] = _latency
     app.jinja_env.filters["action_class"] = _action_class
     app.jinja_env.globals["url_with"] = _url_with
     app.jinja_env.globals["navigation"] = navigation
