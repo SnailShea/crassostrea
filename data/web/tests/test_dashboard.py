@@ -24,7 +24,7 @@ def queue_items():
         _item("EEEEEE5555", "deferred", "carol@example.com", waited=600),
     ]
 
-RESOURCES = {"cpu_percent": 37.5, "load": [0.52, 0.4, 0.35], "cpus": 4,
+RESOURCES = {"cpu_percent": 37.5,
              "memory": {"total_bytes": 8 * 1024 ** 3, "used_bytes": 7 * 1024 ** 3, "percent": 87.5},
              "disks": [{"path": "/var", "used_percent": 93.0, "free_bytes": 3 * 1024 ** 3,
                         "total_bytes": 50 * 1024 ** 3}]}
@@ -76,7 +76,7 @@ def test_resources_survive_a_part_that_fails(app, monkeypatch):
     monkeypatch.setattr(system, "memory", fail)
     monkeypatch.setattr(system, "cpu_percent", lambda: 12.0)
     resources = system.resources()
-    assert resources["memory"] is None and resources["cpu_percent"] == 12.0 and resources["cpus"]
+    assert resources["memory"] is None and resources["cpu_percent"] == 12.0
 
 
 @pytest.mark.parametrize("seconds, text", [(None, "–"), (0.32, "320 ms"), (4.25, "4.2 s"), (600, "10 min"),
@@ -109,7 +109,7 @@ def test_dashboard(logged_in, gateway, backends):
     assert '<td>Deferred</td><td class="num">1</td><td class="num">1</td>' in queue
     assert "The oldest deferred message waits 2 h" in page
     system_card = page.split("<h2>System load</h2>")[1].split("</dl>")[0]
-    assert "38%" in system_card and "load 0.52 / 0.4 / 0.35 on 4 CPUs" in system_card
+    assert "38%" in system_card and "load" not in system_card and "CPUs" not in system_card
     assert 'class="warn" width="87.5"' in system_card and "88% of 8.0 GiB" in system_card
     assert 'class="bad" width="93.0"' in system_card and "3.0 GiB free of 50.0 GiB" in system_card
     # hourly: the averages of the hour, a bar each

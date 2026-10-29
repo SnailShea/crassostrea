@@ -104,7 +104,7 @@ def disks():
 
 
 def resources():
-    """This node's use of the host: {cpu_percent, load, cpus, memory, disks};
+    """This node's use of the host: {cpu_percent, memory, disks};
     a part that cannot be read is None (disks: [])."""
     def read(func, default=None):
         try:
@@ -112,8 +112,7 @@ def resources():
         except (OSError, ValueError, IndexError, ZeroDivisionError) as exc:
             current_app.logger.info("system: %s failed: %s", func.__name__, exc)
             return default
-    return {"cpu_percent": read(cpu_percent), "load": read(lambda: [round(x, 2) for x in os.getloadavg()]),
-            "cpus": os.cpu_count(), "memory": read(memory), "disks": read(disks, [])}
+    return {"cpu_percent": read(cpu_percent), "memory": read(memory), "disks": read(disks, [])}
 
 
 def cluster_status():

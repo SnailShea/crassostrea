@@ -73,7 +73,7 @@
   <div class="card">
     <h2>System load</h2>
     <dl class="props meters">
-      <dt>CPU</dt><dd>{{ meter(r.cpu_percent, '') }}{% if r.load %}<div class="muted small">load {{ r.load|join(' / ') }}{% if r.cpus %} on {{ r.cpus }} CPUs{% endif %}</div>{% endif %}</dd>
+      <dt>CPU</dt><dd>{{ meter(r.cpu_percent, '') }}</dd>
       <dt>Memory</dt><dd>{{ meter(r.memory.percent if r.memory else none, ('of ' ~ (r.memory.total_bytes|filesize)) if r.memory else '') }}</dd>
       {% for d in r.disks %}
       <dt class="mono">{{ d.path }}</dt><dd>{{ meter(d.used_percent, '· ' ~ (d.free_bytes|filesize) ~ ' free of ' ~ (d.total_bytes|filesize)) }}</dd>

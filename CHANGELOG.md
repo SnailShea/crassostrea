@@ -16,6 +16,13 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-29
+
+### Changed
+
+- **Dashboard**: the System load card shows the CPU use without the load
+  averages and the number of CPUs.
+
 ## [0.5.0] - 2026-10-29
 
 ### Added
@@ -191,7 +198,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/SnailShea/crassostrea/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/SnailShea/crassostrea/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/SnailShea/crassostrea/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SnailShea/crassostrea/compare/v0.3.0...v0.4.0
