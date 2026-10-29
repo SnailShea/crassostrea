@@ -16,6 +16,14 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-29
+
+### Changed
+
+- **Dashboard**: the **Over time** card no longer draws the average scan
+  and delivery time per hour or day; the **Processing time** card keeps
+  their averages, and `GET /api/v1/statistics` still has them per bucket.
+
 ## [0.6.1] - 2026-10-29
 
 ### Fixed
@@ -225,7 +233,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.6.2...HEAD
+[0.6.2]: https://github.com/SnailShea/crassostrea/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/SnailShea/crassostrea/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/SnailShea/crassostrea/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/SnailShea/crassostrea/compare/v0.5.0...v0.5.1

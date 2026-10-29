@@ -64,8 +64,6 @@ def index():
                 cluster["problems"] = None
 
     return render_template("dashboard.html", data=data, chart=stats.chart(data),
-                           scan_chart=stats.latency_chart(data, "scan_ms"),
-                           delivery_chart=stats.latency_chart(data, "delivery_s"),
                            categories=stats.CATEGORIES, views=VIEWS, view=view, quarantine=quarantine,
                            health=health, cluster=cluster, learned=learned, queue=queue, queue_error=queue_error,
                            resources=resources,

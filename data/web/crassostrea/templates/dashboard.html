@@ -21,24 +21,6 @@
 </svg>
 <span>{{ percent|round|int }}%{{ ' ' ~ text if text }}</span>{% endif %}
 {% endmacro %}
-{# below a chart, outside the SVG, which scales with the page: the times keep the text size #}
-{% macro chart_times(bars, bucket_hours) %}
-<div class="chart-times">
-  {% for bar in bars %}{% if loop.first or loop.last or loop.index0 == (bars|length // 2) %}
-  <span>{{ bar.start|localtime('%H:%M' if bucket_hours < 24 else '%d %b') }}</span>
-  {% endif %}{% endfor %}
-</div>
-{% endmacro %}
-{# bars of an average per hour or day (stats.latency_chart) #}
-{% macro latency_bars(chart, kind, label, scale) %}
-<svg class="chart latency" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ label }}">
-  <line class="axis" x1="0" y1="{{ chart.height }}" x2="{{ chart.width }}" y2="{{ chart.height }}"></line>
-  {% for bar in chart.bars %}{% if bar.value is not none %}
-  <g><title>{{ bar.start|datetime }}: {{ (bar.value * scale)|latency }}</title>
-    <rect class="{{ kind }}" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.w }}" height="{{ [bar.h, 1]|max }}"></rect></g>
-  {% endif %}{% endfor %}
-</svg>
-{% endmacro %}
 <div class="grid">
   <div class="card">
     <h2>Processing time</h2>
@@ -136,7 +118,7 @@
   <div class="stat {{ 'bad' if t.viruses }}"><div class="label">Viruses</div><div class="value">{{ "{:,}".format(t.viruses) }}</div></div>
 </div>
 
-<div class="card chart-card">
+<div class="card">
   <div class="card-head"><h2>Over time</h2>
     <form method="get" action="{{ url_for('dashboard.index') }}" class="chart-view">
       <select name="view" data-autosubmit aria-label="Statistics">
@@ -144,7 +126,7 @@
       </select>
       <noscript><button type="submit" class="btn">Show</button></noscript>
     </form></div>
-  <h3>Messages <span class="muted small">at most {{ "{:,}".format(chart.peak) }} per {{ 'hour' if view == 'hourly' else 'day' }}</span></h3>
+  <p class="muted small">One bar per {{ 'hour' if view == 'hourly' else 'day' }}, at most {{ "{:,}".format(chart.peak) }} messages</p>
   <svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Messages over time">
     <line class="axis" x1="0" y1="{{ chart.height }}" x2="{{ chart.width }}" y2="{{ chart.height }}"></line>
     {% for bar in chart.bars %}
@@ -153,14 +135,13 @@
     </g>
     {% endfor %}
   </svg>
-  {{ chart_times(chart.bars, data.bucket_hours) }}
+  {# outside the SVG, which scales with the page: the times keep the text size #}
+  <div class="chart-times">
+    {% for bar in chart.bars %}{% if loop.first or loop.last or loop.index0 == (chart.bars|length // 2) %}
+    <span>{{ bar.start|localtime('%H:%M' if data.bucket_hours < 24 else '%d %b') }}</span>
+    {% endif %}{% endfor %}
+  </div>
   <div class="legend">{% for key, label in categories.items() %}<span><i class="{{ key }}"></i>{{ label }}</span>{% endfor %}</div>
-  <h3>Average scan time <span class="muted small">at most {{ ((scan_chart.peak / 1000) if scan_chart.peak else none)|latency }}</span></h3>
-  {{ latency_bars(scan_chart, 'scan', 'Average scan time over time', 0.001) }}
-  {{ chart_times(chart.bars, data.bucket_hours) }}
-  <h3>Average delivery time <span class="muted small">at most {{ (delivery_chart.peak or none)|latency }}</span></h3>
-  {{ latency_bars(delivery_chart, 'delivery', 'Average delivery time over time', 1) }}
-  {{ chart_times(chart.bars, data.bucket_hours) }}
 </div>
 
 {% if cluster %}

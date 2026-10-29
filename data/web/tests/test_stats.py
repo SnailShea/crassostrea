@@ -94,9 +94,6 @@ def test_delivery_time(app):
     assert stats.series("24h", now=now, domains={"other.example"})["totals"]["delivery_s"] == 1.5
     assert stats.series("24h", direction="outbound", now=now)["totals"]["delivery_s"] == 50.0
     assert stats.series("30d", now=now)["totals"]["delivered"] == 8
-    chart = stats.latency_chart(day, "delivery_s")
-    assert chart["peak"] == 12.0 and chart["bars"][-2]["h"] == chart["height"] and chart["bars"][-1]["h"] == 0
-    assert stats.latency_chart(stats.series("24h", now=now - timedelta(days=90)), "scan_ms")["peak"] == 0
     # kept as long as the statistics
     set_setting("stats_retention_days", 1)
     stats.cleanup()

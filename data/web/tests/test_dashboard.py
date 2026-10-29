@@ -112,17 +112,16 @@ def test_dashboard(logged_in, gateway, backends):
     assert "38%" in system_card and "load" not in system_card and "CPUs" not in system_card
     assert 'class="warn" width="87.5"' in system_card and "88% of 8.0 GiB" in system_card
     assert 'class="bad" width="93.0"' in system_card and "3.0 GiB free of 50.0 GiB" in system_card
-    # hourly: the averages of the hour, a bar each
+    # hourly
     graph = page.split("<h2>Over time</h2>")[1]
     assert '<option value="hourly" selected>' in graph and "data-autosubmit" in graph
-    assert graph.count('<rect class="scan"') == 1 and graph.count('<rect class="delivery"') == 1
-    assert "Average scan time <span class=\"muted small\">at most 250 ms" in graph
-    assert "Average delivery time <span class=\"muted small\">at most 4.2 s" in graph
+    assert "One bar per hour, at most 4 messages" in graph
+    assert 'class="scan"' not in graph and "Average delivery time" not in graph  # the averages are in the card
     # no filter, no refresh
     assert 'name="direction"' not in page and 'name="domain"' not in page and "data-live" not in page
     page = logged_in.get("/?view=daily").get_data(as_text=True)
     assert '<option value="daily" selected>' in page and "Averages of the last 30 days" in page
-    assert "at most 4 per day" in page and "<dt>Scan</dt><dd>250 ms</dd>" in page
+    assert "One bar per day, at most 4 messages" in page and "<dt>Scan</dt><dd>250 ms</dd>" in page
     assert '<option value="hourly" selected>' in logged_in.get("/?view=weekly").get_data(as_text=True)
 
 

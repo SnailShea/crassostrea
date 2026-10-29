@@ -179,18 +179,3 @@ def chart(data, width=720, height=200):
         bars.append({"x": round(i * step + step * 0.1, 2), "w": round(step * 0.8, 2), "segments": segments,
                      "total": bucket["total"], "start": bucket["start"]})
     return {"bars": bars, "peak": peak, "width": width, "height": height}
-
-
-def latency_chart(data, key, width=720, height=80):
-    """Bars of an average per bucket (``key``: scan_ms or delivery_s); a
-    bucket without one has no bar."""
-    values = [b[key] for b in data["buckets"]]
-    peak = max([v for v in values if v is not None] + [0])
-    step = width / len(values)
-    bars = []
-    for bucket, value in zip(data["buckets"], values):
-        h = round(value / peak * height, 2) if value is not None and peak else 0
-        bars.append({"x": round(len(bars) * step + step * 0.1, 2), "w": round(step * 0.8, 2), "y": round(height - h, 2),
-                     "h": h, "value": value, "start": bucket["start"]})
-    return {"bars": bars, "peak": peak, "width": width, "height": height}
-

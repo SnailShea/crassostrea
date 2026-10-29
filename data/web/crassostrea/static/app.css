@@ -334,12 +334,8 @@ dl.props.meters dd { display: flex; flex-wrap: wrap; align-items: center; gap: .
 .meter .good { fill: var(--good); }
 .meter .warn { fill: var(--warn); }
 .meter .bad { fill: var(--bad); }
-/* Statistics: bars drawn as SVG on the server; hourly or daily (.chart-view) */
-.chart-card h3 { margin-top: 1.25rem; }
-.chart-card .card-head + h3 { margin-top: 0; }
+/* Statistics: stacked bars drawn as SVG on the server; hourly or daily (.chart-view) */
 .chart-view { margin: 0; }
-.chart .scan { fill: var(--accent); }
-.chart .delivery { fill: var(--info); }
 .chart { width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--border, #ccc); stroke-width: 1; }
 .chart-times { display: flex; justify-content: space-between; color: var(--muted); font-size: .75rem; margin-top: .25rem; }
