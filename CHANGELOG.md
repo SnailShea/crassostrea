@@ -16,6 +16,17 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-29
+
+### Fixed
+
+- **DMARC and TLS reports and user reports never reached the web UI.**
+  Postfix accepted mail to `reports@`, `spam@` and `ham@<hostname>` and
+  discarded it, but Rspamd never handed it over: the export ran as a
+  postfilter, which Rspamd skips once the intake has set its result. It is
+  an idempotent symbol now. Reports sent before the update are lost; ask
+  the senders again or wait for the next day's reports.
+
 ## [0.6.0] - 2026-10-29
 
 ### Changed
@@ -214,7 +225,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/SnailShea/crassostrea/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/SnailShea/crassostrea/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/SnailShea/crassostrea/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/SnailShea/crassostrea/compare/v0.4.1...v0.5.0

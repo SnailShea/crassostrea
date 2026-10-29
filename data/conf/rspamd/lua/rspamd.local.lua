@@ -1330,9 +1330,11 @@ rspamd_config:register_symbol({
   end
 })
 
+-- Idempotent, not a postfilter: the pre-result of SF_INTAKE makes rspamd
+-- skip the filters and postfilters, only idempotent symbols still run.
 rspamd_config:register_symbol({
   name = 'SF_INTAKE_EXPORT',
-  type = 'postfilter',
+  type = 'idempotent',
   flags = 'empty,nostat',
   callback = function(task)
     local kind = intake_kind(task)
