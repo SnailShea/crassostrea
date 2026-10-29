@@ -30,11 +30,6 @@
       <option value="">Inbound &amp; outbound</option>
       {% for key, label in directions.items() %}<option value="{{ key }}" {{ 'selected' if request.args.get('direction') == key }}>{{ label }}</option>{% endfor %}
     </select>
-    <select name="status" data-autosubmit aria-label="Status">
-      <option value="">Any status</option>
-      <option value="pending" {{ 'selected' if request.args.get('status') == 'pending' }}>Not released</option>
-      <option value="released" {{ 'selected' if request.args.get('status') == 'released' }}>Released</option>
-    </select>
     <button type="submit" class="btn">Filter</button>
   </form>
 

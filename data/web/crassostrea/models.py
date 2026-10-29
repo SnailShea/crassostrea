@@ -536,8 +536,6 @@ class QuarantineItem(ScanSymbols, db.Model):
     size = db.Column(db.Integer, nullable=False, default=0)
     message = db.deferred(db.Column(db.LargeBinary().with_variant(mysql.LONGBLOB(), "mysql"), nullable=False))
     created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
-    released_at = db.Column(db.DateTime)
-    released_by = db.Column(db.String(64))
 
 
 class MailLogEntry(ScanSymbols, db.Model):

@@ -85,7 +85,7 @@ def action(item_id):
     if act == "release":
         error = self_service_release(item, _released_by())
         flash(error or "The message has been delivered to your mailbox.", "danger" if error else "success")
-        return redirect(url_for("token.show", item_id=item.id))
+        return redirect(url_for("token.show", item_id=item_id) if error else url_for("token.index"))
     if act == "delete":
         db.session.delete(item)
         db.session.commit()

@@ -14,7 +14,7 @@
             {% if u.digest_interval %}<span class="badge">digest {{ u.digest_interval }}</span>{% endif %}
           </td>
           <td class="num"><a href="{{ url_for('quarantine.index', user=u.email) }}"
-              title="Inbound quarantined mail not released">{{ pending.get(u.email, 0) }}</a></td>
+              title="Inbound quarantined mail">{{ pending.get(u.email, 0) }}</a></td>
           <td class="muted nowrap">{% if u.invited_at %}<span class="badge info" title="Created for quarantined mail, no password set yet">invited</span>{% else %}{{ u.last_login_at|datetime }}{% endif %}</td>
           <td class="right nowrap">
             <form method="post" action="{{ url_for('mailboxes.toggle', user_id=u.id) }}" class="inline" data-async>

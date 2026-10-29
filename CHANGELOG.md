@@ -16,6 +16,22 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-29
+
+### Changed
+
+- **A released message leaves the quarantine** once Postfix has taken it
+  (admin pages, the user portal, digest links and the API); when Postfix
+  does not take it, it stays. The mail log keeps the message and the audit
+  log the release. The "released" status, its filter and badges are gone.
+  `init-db` deletes the messages released before and the columns
+  `quarantine.released_at` and `released_by` once.
+- **API**: quarantine items have no `released_at` and `released_by`, and
+  `GET /api/v1/quarantine` no `status` filter; `POST
+  /api/v1/quarantine/{id}/release` answers with the message as it was, and
+  the item is then gone (404). Scripts that filtered by `status=pending`
+  drop the filter: everything in the quarantine is pending.
+
 ## [0.5.1] - 2026-10-29
 
 ### Changed
@@ -198,7 +214,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/SnailShea/crassostrea/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/SnailShea/crassostrea/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/SnailShea/crassostrea/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/SnailShea/crassostrea/compare/v0.4.0...v0.4.1

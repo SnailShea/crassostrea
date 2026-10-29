@@ -21,10 +21,10 @@ def _get(user_id):
 
 
 def _pending_counts():
-    """{base address: inbound quarantined messages not released}"""
+    """{base address: inbound quarantined messages}"""
     counts = {}
     rows = (db.session.query(QuarantineItem.rcpt, db.func.count(QuarantineItem.id))
-            .filter(QuarantineItem.direction == "inbound", QuarantineItem.released_at.is_(None))
+            .filter(QuarantineItem.direction == "inbound")
             .group_by(QuarantineItem.rcpt))
     for rcpt, count in rows:
         address = base_address(rcpt.lower())
@@ -73,7 +73,7 @@ def edit(user_id):
                entry_delete_endpoint="mailboxes.delete_entry", entry_delete_args={"user_id": user.id})
     items = QuarantineItem.query.filter(owned_by(user.email))
     ctx.update(quarantine_recent=items.order_by(QuarantineItem.created_at.desc()).limit(10).all(),
-               quarantine_pending=items.filter(QuarantineItem.released_at.is_(None)).count())
+               quarantine_count=items.count())
     return render_template("mailbox_edit.html", password_form=SetPasswordForm(prefix="pw"),
                            password_format=passwords.scheme(user.password_hash), **ctx)
 

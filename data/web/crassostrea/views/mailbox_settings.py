@@ -97,12 +97,12 @@ def personal_list_action(item, act, released_by, show_endpoint, index_endpoint):
         sync_all()
         flash(f"{listed} Its mail is no longer delivered to you. Message deleted.", "success")
         return redirect(url_for(index_endpoint))
+    item_id = item.id
     error = self_service_release(item, released_by)
     if error:
         db.session.rollback()
         flash(error, "danger")
-    else:
-        db.session.commit()  # the entry, also when the message was released before
-        sync_all()
-        flash(f"The message has been delivered to your mailbox. {listed}", "success")
-    return redirect(url_for(show_endpoint, item_id=item.id))
+        return redirect(url_for(show_endpoint, item_id=item_id))
+    sync_all()
+    flash(f"The message has been delivered to your mailbox. {listed}", "success")
+    return redirect(url_for(index_endpoint))

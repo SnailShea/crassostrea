@@ -22,7 +22,6 @@
           <td class="nowrap">
             {% if item.direction == 'outbound' %}<span class="badge warn">outbound</span>{% endif %}
             {% if item.is_virus %}<span class="badge bad">virus</span>{% endif %}
-            {% if item.released_at %}<span class="badge good">released</span>{% endif %}
           </td>
         </tr>
       {% else %}

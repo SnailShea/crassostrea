@@ -134,8 +134,9 @@ def test_list_and_show(logged_in, item):
 
 
 def test_release(logged_in, item, sent, learned):
-    response = logged_in.post(f"/quarantine/{item.id}/action", data={"action": "release_ham"})
-    assert response.status_code == 302
+    item_id = item.id
+    response = logged_in.post(f"/quarantine/{item_id}/action", data={"action": "release_ham"})
+    assert response.status_code == 302 and response.headers["Location"].endswith("/quarantine/")
     (sender, rcpt, message), = sent
     assert (sender, rcpt) == ("spam@bad.example", "alice@example.com")
     # release header prepended, original message unchanged after it
@@ -143,8 +144,10 @@ def test_release(logged_in, item, sent, learned):
     assert first_line.startswith(b"X-Quarantine-Released: ") and b"by admin" in first_line
     assert rest == RAW
     assert learned == [False]
-    db.session.refresh(item)
-    assert item.released_at is not None and item.released_by == "admin"
+    # delivered: no longer in the quarantine
+    db.session.expire_all()
+    assert db.session.get(QuarantineItem, item_id) is None
+    assert b"removed from the quarantine" in logged_in.get("/quarantine/").data
 
 
 def test_virus_release_needs_confirmation(logged_in, internal_app, domains, sent):
@@ -166,8 +169,8 @@ def test_release_failure_is_reported(logged_in, item, monkeypatch):
     monkeypatch.setattr(mailer, "reinject", broken)
     response = logged_in.post(f"/quarantine/{item.id}/action", data={"action": "release"}, follow_redirects=True)
     assert b"Postfix did not accept" in response.data
-    db.session.refresh(item)
-    assert item.released_at is None
+    db.session.expire_all()
+    assert db.session.get(QuarantineItem, item.id) is not None  # kept for another try
 
 
 def test_learn_spam_deletes(logged_in, item, learned):
@@ -189,3 +192,21 @@ def test_cleanup_command(app, item):
     result = app.test_cli_runner().invoke(args=["cleanup"])
     assert "Deleted 1" in result.output
     assert QuarantineItem.query.count() == 0
+
+
+def test_init_db_removes_messages_released_before(app, item):
+    """Released messages stayed in the quarantine up to 0.5.1, marked by
+    released_at; init-db deletes them and the columns once."""
+    kept = QuarantineItem(rcpt="bob@example.com", domain="example.com", message=RAW, symbols="[]")
+    db.session.add(kept)
+    db.session.commit()
+    with db.engine.begin() as conn:
+        conn.execute(db.text("ALTER TABLE quarantine ADD COLUMN released_at DATETIME"))
+        conn.execute(db.text("ALTER TABLE quarantine ADD COLUMN released_by VARCHAR(64)"))
+        conn.execute(db.text("UPDATE quarantine SET released_at = CURRENT_TIMESTAMP, released_by = 'admin' "
+                             "WHERE id = :id"), {"id": item.id})
+    output = app.test_cli_runner().invoke(args=["init-db"]).output
+    assert "removed 1 released message(s)" in output
+    assert [i.rcpt for i in QuarantineItem.query] == ["bob@example.com"]
+    assert "released_at" not in {c["name"] for c in db.inspect(db.engine).get_columns("quarantine")}
+    assert "released" not in app.test_cli_runner().invoke(args=["init-db"]).output  # once

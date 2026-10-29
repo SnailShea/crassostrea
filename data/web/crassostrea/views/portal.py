@@ -60,9 +60,9 @@ def action(item_id):
         error = _release_own(item)
         if error:
             flash(error, "danger")
-        else:
-            flash("The message has been delivered to your mailbox.", "success")
-        return redirect(url_for("portal.show", item_id=item.id))
+            return redirect(url_for("portal.show", item_id=item_id))
+        flash("The message has been delivered to your mailbox.", "success")
+        return redirect(url_for("portal.index"))
     if act == "delete":
         db.session.delete(item)
         db.session.commit()

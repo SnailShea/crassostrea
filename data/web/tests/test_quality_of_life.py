@@ -71,10 +71,11 @@ def test_admin_release_and_allow(logged_in, domain, outbox, config):
                               follow_redirects=True)
     text = response.get_data(as_text=True)
     assert "news@shop.example added to the allow list of alice@example.com" in text
-    assert len(outbox) == 1 and db.session.get(QuarantineItem, item.id).released_at is not None
+    assert len(outbox) == 1 and db.session.get(QuarantineItem, item.id) is None  # released: removed
     assert [(e.list_type, e.value) for e in user.list_entries] == [("allow", "news@shop.example")]
-    # again: already listed, still released
-    response = logged_in.post(f"/quarantine/{item.id}/action", data={"action": "release_allow", "scope": "mailbox"},
+    # another message of the sender: already listed, still released
+    again = _item(rcpt="alice+shop@example.com")
+    response = logged_in.post(f"/quarantine/{again.id}/action", data={"action": "release_allow", "scope": "mailbox"},
                               follow_redirects=True)
     assert "already is on the allow list" in response.get_data(as_text=True) and len(outbox) == 2
     other = _item()
@@ -163,7 +164,8 @@ def test_digest_link_allow_needs_an_account(client, domain, outbox):
 def test_api_allow_and_block(api, domain, outbox):
     item = _item()
     body = api("POST", f"/quarantine/{item.id}/release", json={"allow_sender": "domain"}).get_json()
-    assert body["released_at"] and "news@shop.example added to the allow list of example.com." in body["notes"]
+    assert body["id"] == item.id and "news@shop.example added to the allow list of example.com." in body["notes"]
+    item = _item()
     assert api("POST", f"/quarantine/{item.id}/release", json={"allow_sender": "mailbox"}).status_code == 422
     assert api("POST", f"/quarantine/{item.id}/release", json={"allow_sender": "everyone"}).status_code == 422
     other = _item(sender="bad@spam.example")

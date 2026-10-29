@@ -31,7 +31,6 @@
           <td class="truncate"><a href="{{ url_for('token.show', item_id=item.id) }}">{{ item.subject or '(no subject)' }}</a></td>
           <td class="nowrap">
             {% if item.is_virus %}<span class="badge bad">virus</span>{% endif %}
-            {% if item.released_at %}<span class="badge good">released</span>{% endif %}
           </td>
         </tr>
       {% else %}

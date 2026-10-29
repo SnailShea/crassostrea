@@ -21,7 +21,6 @@
       <dt>Received</dt><dd>{{ item.created_at|datetime }}</dd>
       <dt>From</dt><dd class="mono">{{ item.sender or '<>' }}</dd>
       <dt>Spam score</dt><dd>{{ '%.1f'|format(item.score) }}</dd>
-      <dt>Status</dt><dd>{% if item.released_at %}released {{ item.released_at|datetime }}{% else %}held{% endif %}</dd>
     </dl>
   </div>
   <div class="card">
@@ -29,7 +28,7 @@
     <form method="post" action="{{ url_for('portal.action', item_id=item.id) }}">
       {{ csrf() }}
       <div class="actions">
-        {% if not item.is_virus and not item.released_at %}
+        {% if not item.is_virus %}
         <button type="submit" name="action" value="release" class="btn primary"
                 data-confirm="Deliver this message to your mailbox?">Release to my mailbox</button>
         {% endif %}

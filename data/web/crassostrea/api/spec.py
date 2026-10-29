@@ -656,8 +656,6 @@ def _operations_paths():
                            _query("mailbox", "Inbound mail of a mailbox, with its sub-addresses (alice+tag@)"),
                            _query("direction", "inbound or outbound",
                                   {"type": "string", "enum": ["inbound", "outbound"]}),
-                           _query("status", "pending (not released) or released",
-                                  {"type": "string", "enum": ["pending", "released"]}),
                            _query("q", "Substring of subject, sender or recipient")]),
         },
         "/quarantine/{item_id}": {
@@ -679,11 +677,13 @@ def _operations_paths():
         "/quarantine/{item_id}/release": {
             "parameters": [item_id],
             "post": {**_op("Quarantine", "Release a message to its recipient", "releaseQuarantineItem",
-                           {"200": _response("Released", _ref("ReleaseResult")), **NOT_FOUND,
+                           {"200": _response("Released: the message as it was in the quarantine",
+                                             _ref("ReleaseResult")), **NOT_FOUND,
                             "409": _response("The message contains a virus (set allow_virus)", _ref("Error")),
                             **UNAVAILABLE},
-                           description="Delivers the message again (also when it was released before). "
-                                       "Outbound messages are DKIM-signed for the sender's domain."),
+                           description="Delivers the message and removes it from the quarantine; when "
+                                       "Postfix does not take it (503) it stays. Outbound messages are "
+                                       "DKIM-signed for the sender's domain."),
                      "requestBody": {"required": False, **_json(_ref("ReleaseRequest"))}},
         },
         "/quarantine/{item_id}/block-sender": {
@@ -1454,7 +1454,6 @@ def _operations_schemas():
         "rcpt": {"type": "string"}, "domain": {"type": "string"}, "score": {"type": "number"},
         "action": {"type": "string"}, "ip": {"type": "string"}, "size": {"type": "integer"},
         "virus": {"type": "boolean"}, "created_at": TIMESTAMP,
-        "released_at": {**TIMESTAMP, "nullable": True}, "released_by": {"type": "string", "nullable": True},
     }
     notes = {"type": "array", "items": {"type": "string"}}
     symbols = {"type": "array", "items": {"type": "object", "properties": {

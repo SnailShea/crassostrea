@@ -95,9 +95,9 @@ def test_html_part_is_escaped(app, domain, outbox):
 
 
 @pytest.mark.parametrize("setup", ["global_never", "domain_never", "user_never", "user_disabled",
-                                   "domain_disabled", "released"])
+                                   "domain_disabled"])
 def test_no_digest(app, domain, outbox, setup):
-    item = _item()
+    _item()
     user = MailboxUser(email="alice@example.com", domain=domain)
     user.set_password("x" * 12)
     db.session.add(user)
@@ -111,8 +111,6 @@ def test_no_digest(app, domain, outbox, setup):
         user.active = False
     elif setup == "domain_disabled":
         domain.active = False
-    elif setup == "released":
-        item.released_at = utcnow()
     db.session.commit()
     assert digest.send_due_digests() == ([], {})
 
@@ -171,20 +169,23 @@ def test_get_never_changes_state(app, token, outbox):
     client = app.test_client()
     assert client.get(f"/q/{token}/{item.id}").status_code == 200
     assert client.get(f"/q/{token}/{item.id}/action").status_code == 405
-    db.session.refresh(item)
-    assert item.released_at is None and len(outbox) == 1
+    db.session.expire_all()
+    assert db.session.get(QuarantineItem, item.id) is not None and len(outbox) == 1
 
 
 def test_token_release_and_delete(app, token, outbox):
     item = QuarantineItem.query.filter_by(subject="Cheap pills").one()
+    item_id = item.id
     client = app.test_client()
-    response = client.post(f"/q/{token}/{item.id}/action", data={"action": "release"}, follow_redirects=True)
-    assert b"delivered to your mailbox" in response.data
+    response = client.post(f"/q/{token}/{item_id}/action", data={"action": "release"}, follow_redirects=True)
+    assert b"delivered to your mailbox" in response.data and b"Cheap pills" not in response.data  # the list
     assert outbox[-1][1] == "alice@example.com"
-    db.session.refresh(item)
-    assert item.released_by == "digest link (alice@example.com)"
-    client.post(f"/q/{token}/{item.id}/action", data={"action": "delete"})
-    assert db.session.get(QuarantineItem, item.id) is None
+    assert b"by digest link (alice@example.com)" in outbox[-1][2].split(b"\r\n", 1)[0]
+    db.session.expire_all()
+    assert db.session.get(QuarantineItem, item_id) is None  # released: removed
+    other = _item()
+    client.post(f"/q/{token}/{other.id}/action", data={"action": "delete"})
+    assert db.session.get(QuarantineItem, other.id) is None
 
 
 def test_token_cannot_reach_other_items_or_viruses(app, token, outbox):

@@ -8,7 +8,7 @@
     <p><a href="{{ url_for('mailboxes.index') }}">‹ Mailbox users</a></p>
   </div>
   <div class="actions">
-    <a class="btn" href="{{ url_for('quarantine.index', user=mailbox.email) }}">Quarantine ({{ quarantine_pending }})</a>
+    <a class="btn" href="{{ url_for('quarantine.index', user=mailbox.email) }}">Quarantine ({{ quarantine_count }})</a>
     <form method="post" action="{{ url_for('mailboxes.toggle', user_id=mailbox.id) }}" class="inline">
       {{ csrf() }}<input type="hidden" name="next" value="edit">
       <button type="submit" class="btn">{{ "Disable account" if mailbox.active else "Enable account" }}</button>
@@ -48,7 +48,7 @@
 
 <div class="card" id="quarantine">
   <div class="card-head"><h2>Quarantine</h2>
-    <a href="{{ url_for('quarantine.index', user=mailbox.email) }}">Manage all ({{ quarantine_pending }} not released)</a></div>
+    <a href="{{ url_for('quarantine.index', user=mailbox.email) }}">Manage all ({{ quarantine_count }})</a></div>
   <div class="table-wrap">
   <table>
     <thead><tr><th>Received</th><th>From</th><th>To</th><th>Subject</th><th class="num">Score</th><th></th></tr></thead>
@@ -60,8 +60,7 @@
         <td class="truncate">{{ item.rcpt }}</td>
         <td class="truncate"><a href="{{ url_for('quarantine.show', item_id=item.id) }}">{{ item.subject or '(no subject)' }}</a></td>
         <td class="num">{{ '%.1f'|format(item.score) }}</td>
-        <td class="nowrap">{% if item.is_virus %}<span class="badge bad">virus</span>{% endif %}
-          {% if item.released_at %}<span class="badge good">released</span>{% endif %}</td>
+        <td class="nowrap">{% if item.is_virus %}<span class="badge bad">virus</span>{% endif %}</td>
       </tr>
     {% else %}
       <tr><td colspan="6" class="empty">No quarantined mail for this mailbox.</td></tr>

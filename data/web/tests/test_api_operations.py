@@ -54,8 +54,6 @@ def test_quarantine_list_and_get(api, app):
     assert listed["items"][0]["virus"] is False and "message" not in listed["items"][0]
     assert api("GET", "/quarantine?direction=outbound").get_json()["total"] == 1
     assert api("GET", "/quarantine?q=pills").get_json()["total"] == 2
-    assert api("GET", "/quarantine?status=released").get_json()["total"] == 0
-    assert api("GET", "/quarantine?status=whatever").status_code == 400
 
     detail = api("GET", f"/quarantine/{item.id}").get_json()
     assert detail["symbols"][0]["name"] == "BAYES_SPAM"
@@ -67,14 +65,19 @@ def test_quarantine_list_and_get(api, app):
 
 def test_quarantine_release(api, app, sent, learned):
     item = _item()
-    response = api("POST", f"/quarantine/{item.id}/release", json={"learn_ham": True})
+    item_id = item.id
+    response = api("POST", f"/quarantine/{item_id}/release", json={"learn_ham": True})
     assert response.status_code == 200
     body = response.get_json()
-    assert body["released_by"] == "api:test" and body["released_at"] and "learned as ham" in body["notes"]
-    assert sent[0][1] == "alice@example.com" and b"X-Quarantine-Released" in sent[0][2]
+    # the message as it was, and gone from the quarantine
+    assert body["id"] == item_id and body["subject"] == "Cheap pills" and "learned as ham" in body["notes"]
+    assert "released_at" not in body
+    assert sent[0][1] == "alice@example.com" and b"X-Quarantine-Released" in sent[0][2] and b"by api:test" in sent[0][2]
     assert learned == [False]
+    assert api("GET", f"/quarantine/{item_id}").status_code == 404
+    assert api("POST", f"/quarantine/{item_id}/release").status_code == 404
     # without a body
-    assert api("POST", f"/quarantine/{item.id}/release").status_code == 200
+    assert api("POST", f"/quarantine/{_item().id}/release").status_code == 200
 
 
 def test_quarantine_virus_needs_confirmation(api, app, sent):
@@ -94,8 +97,8 @@ def test_quarantine_release_failure(api, app, monkeypatch):
     monkeypatch.setattr(mailer, "reinject", refuse)
     response = api("POST", f"/quarantine/{item.id}/release")
     assert response.status_code == 503 and "Postfix" in response.get_json()["error"]
-    db.session.refresh(item)
-    assert item.released_at is None
+    db.session.expire_all()
+    assert db.session.get(QuarantineItem, item.id) is not None  # kept for another try
 
 
 def test_quarantine_learn_and_delete(api, app, learned):

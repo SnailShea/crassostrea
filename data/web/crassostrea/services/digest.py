@@ -34,9 +34,9 @@ def effective_interval(domain, user=None):
 
 
 def pending_by_address():
-    """{base address: [pending inbound items, newest first]}"""
+    """{base address: [inbound items, newest first]}"""
     items = (QuarantineItem.query
-             .filter(QuarantineItem.direction == "inbound", QuarantineItem.released_at.is_(None))
+             .filter(QuarantineItem.direction == "inbound")
              .order_by(QuarantineItem.created_at.desc()).all())
     grouped = {}
     for item in items:

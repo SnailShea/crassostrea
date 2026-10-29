@@ -101,13 +101,17 @@ def test_mailbox_user_sees_only_own_inbound_items(alice_client, domain):
     assert QuarantineItem.query.count() == 3
 
 
-def test_mailbox_user_release_and_delete(alice_client, domain, sent):
+def test_mailbox_user_release_and_delete(alice_client, domain, monkeypatch):
+    sent = []
+    monkeypatch.setattr(mailer, "reinject", lambda sender, rcpt, msg: sent.append((rcpt, msg.split(b"\r\n", 1)[0])))
     item = _item("alice@example.com")
-    alice_client.post(f"/my/{item.id}/action", data={"action": "release"})
-    assert sent == ["alice@example.com"]
-    db.session.refresh(item)
-    assert item.released_by == "alice@example.com"
-    alice_client.post(f"/my/{item.id}/action", data={"action": "delete"})
+    response = alice_client.post(f"/my/{item.id}/action", data={"action": "release"})
+    (rcpt, header), = sent
+    assert rcpt == "alice@example.com" and b"by alice@example.com" in header
+    assert response.headers["Location"].endswith("/my/")
+    assert QuarantineItem.query.count() == 0  # delivered: no longer in the quarantine
+    other = _item("alice@example.com")
+    alice_client.post(f"/my/{other.id}/action", data={"action": "delete"})
     assert QuarantineItem.query.count() == 0
 
 

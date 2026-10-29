@@ -26,7 +26,7 @@ QUEUE_ID = re.compile(r"^[0-9A-Za-z]{6,32}$")
 
 
 def _actor():
-    """Recorded as released_by and requeued_by."""
+    """Named in the release header and recorded as requeued_by."""
     return f"api:{g.api_key.name}"[:64]
 
 
@@ -39,8 +39,7 @@ def quarantine_json(item):
         "id": item.id, "direction": item.direction, "queue_id": item.qid, "subject": item.subject,
         "sender": item.sender, "rcpt": item.rcpt, "domain": item.domain, "score": item.score,
         "action": item.action, "ip": item.ip, "size": item.size, "virus": item.is_virus,
-        "created_at": _iso(item.created_at), "released_at": _iso(item.released_at),
-        "released_by": item.released_by,
+        "created_at": _iso(item.created_at),
     }
 
 
@@ -60,13 +59,6 @@ def list_quarantine():
         if "@" not in mailbox or len(mailbox) > 320:
             raise ApiError(400, "mailbox must be an address")
         query = query.filter(owned_by(base_address(mailbox)))
-    status = request.args.get("status", "")
-    if status == "released":
-        query = query.filter(QuarantineItem.released_at.isnot(None))
-    elif status == "pending":
-        query = query.filter(QuarantineItem.released_at.is_(None))
-    elif status:
-        raise ApiError(400, "status must be pending or released")
     if request.args.get("q"):
         like = f"%{request.args['q'].strip()}%"
         query = query.filter(db.or_(QuarantineItem.subject.ilike(like), QuarantineItem.sender.ilike(like),
@@ -99,12 +91,13 @@ def release_quarantine_item(item_id):
     listed = None
     if data.get("allow_sender") is not None:
         listed = list_sender(item, "allow", _sender_scope(data["allow_sender"], "allow_sender"))
+    released = quarantine_json(item)
     notes = release(item, _actor(), learn_ham=data.get("learn_ham", False))
     db.session.commit()
     if listed:
         sync_all()
         notes = [*notes, listed]
-    return jsonify({**quarantine_json(item), "notes": notes})
+    return jsonify({**released, "notes": notes})
 
 
 def _sender_scope(value, field):

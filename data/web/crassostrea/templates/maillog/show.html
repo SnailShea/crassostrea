@@ -51,7 +51,7 @@
       <dt>Size</dt><dd>{{ entry.size|filesize }}</dd>
       <dt>Scan time</dt><dd>{{ entry.scan_ms }} ms</dd>
       {% if quarantined %}
-      <dt>Quarantine</dt><dd>{% for item in quarantined %}<div><a href="{{ url_for('quarantine.show', item_id=item.id) }}">{{ item.rcpt }}</a>{% if item.released_at %} <span class="badge good">released</span>{% endif %}</div>{% endfor %}</dd>
+      <dt>Quarantine</dt><dd>{% for item in quarantined %}<div><a href="{{ url_for('quarantine.show', item_id=item.id) }}">{{ item.rcpt }}</a></div>{% endfor %}</dd>
       {% endif %}
       {% if entry.requeued_at %}<dt>Re-queued</dt><dd>{{ entry.requeued_at|datetime }} by {{ entry.requeued_by }}</dd>{% endif %}
     </dl>

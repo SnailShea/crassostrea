@@ -25,7 +25,6 @@
       <dt>Queue ID</dt><dd class="mono">{{ item.qid or '–' }}</dd>
       <dt>Score</dt><dd>{{ '%.2f'|format(item.score) }} ({{ item.action }})</dd>
       <dt>Size</dt><dd>{{ item.size|filesize }}</dd>
-      <dt>Status</dt><dd>{% if item.released_at %}released {{ item.released_at|datetime }} by {{ item.released_by }}{% else %}not released{% endif %}</dd>
     </dl>
   </div>
   <div class="card">
@@ -38,7 +37,7 @@
       {% endif %}
       <div class="actions">
         <button type="submit" name="action" value="release" class="btn primary"
-                data-confirm="Deliver this message to {{ item.rcpt }}?">{{ "Release again" if item.released_at else "Release" }}</button>
+                data-confirm="Deliver this message to {{ item.rcpt }}?">Release</button>
         <button type="submit" name="action" value="release_ham" class="btn"
                 data-confirm="Deliver this message and learn it as ham?">Release &amp; learn as ham</button>
         <button type="submit" name="action" value="learn_spam" class="btn">Learn as spam &amp; delete</button>

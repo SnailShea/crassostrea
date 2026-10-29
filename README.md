@@ -121,9 +121,10 @@ existing mail server. A Flask web interface manages it.
   protected domains can report (from a relay network, or passing SPF or with
   a DKIM signature of their domain), with a limit per hour and an optional
   confirmation; the page lists recent reports. Off by default.
-- **Quarantine**: rejected mail is stored per recipient. You can release it,
-  release and learn it as ham, learn it as spam, download it or delete it.
-  Retention and maximum size are configurable.
+- **Quarantine**: rejected mail is stored per recipient. You can release it
+  (it then leaves the quarantine), release and learn it as ham, learn it as
+  spam, download it or delete it. Retention and maximum size are
+  configurable.
 - **Statistics** (Dashboard): scanned messages by outcome (clean, marked as spam,
   greylisted/deferred, rejected) and viruses, and the average processing time
   (Rspamd's scan, and Postfix's time from arrival to delivery), hourly for

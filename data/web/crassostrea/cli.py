@@ -67,6 +67,7 @@ def init_db():
 def _init_database():
     db.create_all()
     _migrate()
+    _remove_released()
     for key, value in SETTING_DEFAULTS.items():
         if db.session.get(Setting, key) is None:
             db.session.add(Setting(key=key, value=str(value)))
@@ -111,6 +112,20 @@ def _migrate():
             with db.engine.begin() as conn:
                 conn.execute(db.text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
             click.echo(f"Migrated: added {table}.{column}")
+
+
+def _remove_released():
+    """Released messages left the quarantine before release removed them
+    (0.5.1 and older): delete them and the columns that marked them."""
+    columns = {c["name"] for c in db.inspect(db.engine).get_columns("quarantine")}
+    if "released_at" not in columns:
+        return
+    with db.engine.begin() as conn:
+        removed = conn.execute(db.text("DELETE FROM quarantine WHERE released_at IS NOT NULL")).rowcount
+        for column in ("released_at", "released_by"):
+            if column in columns:
+                conn.execute(db.text(f"ALTER TABLE quarantine DROP COLUMN {column}"))
+    click.echo(f"Migrated: removed {removed} released message(s) from the quarantine")
 
 
 @click.command("create-admin")

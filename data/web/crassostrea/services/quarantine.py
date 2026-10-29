@@ -6,7 +6,7 @@ from email.utils import formatdate
 from flask import current_app
 
 from ..extensions import db
-from ..models import QuarantineItem, utcnow
+from ..models import QuarantineItem
 from . import dkim, mailer
 from .headers import RELEASE_HEADER, prepend_header, remove_header
 from .rspamd import RspamdError, train
@@ -88,17 +88,18 @@ def prepare_release(item, released_by):
 
 
 def release(item, released_by, learn_ham=False):
-    """Deliver the message to its recipient (see prepare_release)."""
+    """Deliver the message to its recipient (see prepare_release) and remove
+    it from the quarantine (the caller commits). When Postfix does not take
+    it (mailer.ReleaseError) the message stays."""
     message, signed_by = prepare_release(item, released_by)
     mailer.reinject(item.sender, item.rcpt, message)
-    item.released_at = utcnow()
-    item.released_by = released_by[:64]
     notes = [f"DKIM-signed for {signed_by}"] if signed_by else []
     if learn_ham:
         try:
             notes += train(item.message, spam=False)
         except RspamdError as exc:
             notes.append(f"learning failed: {exc}")
+    db.session.delete(item)
     return notes
 
 
@@ -165,12 +166,11 @@ def list_sender(item, list_type, scope):
 def self_service_release(item, released_by):
     """Release by the recipient (portal or digest link). Returns an error or None.
 
-    Viruses can only be released by administrators. Commits on success.
+    Viruses can only be released by administrators. Commits on success: the
+    message is no longer in the quarantine.
     """
     if item.is_virus:
         return "This message contains a virus and can only be released by an administrator."
-    if item.released_at is not None:
-        return None
     try:
         release(item, released_by)
     except mailer.ReleaseError:

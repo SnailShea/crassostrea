@@ -52,10 +52,10 @@ def outbox(monkeypatch):
     return sent
 
 
-def _item(rcpt, age=timedelta(0), direction="inbound", released=False):
+def _item(rcpt, age=timedelta(0), direction="inbound"):
     item = QuarantineItem(rcpt=rcpt, domain=rcpt.split("@")[1], subject=f"for {rcpt}", sender="spam@bad.example",
                           symbols="[]", message=b"Subject: x\r\n\r\nbody\r\n", created_at=utcnow() - age,
-                          direction=direction, released_at=utcnow() if released else None)
+                          direction=direction)
     db.session.add(item)
     db.session.commit()
     return item
@@ -313,18 +313,15 @@ def test_quarantine_of_a_mailbox(logged_in, domain):
     db.session.commit()
     _item("alice@example.com")
     _item("alice+news@example.com")
-    _item("alice@example.com", released=True)
     _item("bob@example.com")
     _item("alice@example.com", direction="outbound")
     page = logged_in.get("/quarantine/?user=Alice@example.com").get_data(as_text=True)
     assert "for alice+news@example.com" in page and "for bob@example.com" not in page
-    assert page.count("for alice@example.com") == 2  # inbound only
+    assert page.count("for alice@example.com") == 1  # inbound only
     assert f"/mailboxes/{user.id}" in page and "Show all recipients" in page
-    page = logged_in.get("/quarantine/?user=alice@example.com&status=pending").get_data(as_text=True)
-    assert page.count("for alice") == 2
     users = logged_in.get("/mailboxes/").get_data(as_text=True)
     assert 'href="/quarantine/?user=alice@example.com"' in users
-    assert re.search(r'title="Inbound quarantined mail not released">2</a>', users)
+    assert re.search(r'title="Inbound quarantined mail">2</a>', users)
     edit = logged_in.get(f"/mailboxes/{user.id}").get_data(as_text=True)
     assert "Quarantine (2)" in edit and "for alice+news@example.com" in edit
 

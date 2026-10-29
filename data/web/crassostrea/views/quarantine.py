@@ -32,7 +32,6 @@ def _filtered_query():
     query = _scoped(QuarantineItem.query)
     domain = request.args.get("domain", "").strip().lower()
     search = request.args.get("q", "").strip()
-    status = request.args.get("status", "")
     direction = request.args.get("direction", "")
     owner = _owner()
     if owner:
@@ -46,10 +45,6 @@ def _filtered_query():
         like = f"%{search}%"
         query = query.filter(db.or_(QuarantineItem.subject.ilike(like), QuarantineItem.sender.ilike(like),
                                     QuarantineItem.rcpt.ilike(like), QuarantineItem.qid == search))
-    if status == "released":
-        query = query.filter(QuarantineItem.released_at.isnot(None))
-    elif status == "pending":
-        query = query.filter(QuarantineItem.released_at.is_(None))
     return query
 
 
@@ -125,10 +120,11 @@ def action(item_id):
             if item.is_virus and request.form.get("confirm_virus") != "yes":
                 flash("This message contains a virus. Confirm the release explicitly.", "danger")
                 return redirect(url_for("quarantine.show", item_id=item.id))
+            rcpt = item.rcpt
             notes = release(item, current_user.username, learn_ham=act == "release_ham")
             db.session.commit()
-            flash(f"Message released to {item.rcpt}. " + "; ".join(notes), "success")
-            return redirect(url_for("quarantine.show", item_id=item.id))
+            flash(f"Message released to {rcpt} and removed from the quarantine. " + "; ".join(notes), "success")
+            return redirect(url_for("quarantine.index"))
         if act == "learn_spam":
             notes = learn_spam_and_delete(item)
             db.session.commit()
@@ -158,11 +154,13 @@ def _list_sender_action(item, act):
     try:
         listed = list_sender(item, "allow" if act == "release_allow" else "block", list_scope)
         if act == "release_allow":
+            rcpt = item.rcpt
             notes = release(item, current_user.username)
             db.session.commit()
             sync_all()
-            flash(f"Message released to {item.rcpt}. {listed} " + "; ".join(notes), "success")
-            return redirect(url_for("quarantine.show", item_id=item.id))
+            flash(f"Message released to {rcpt} and removed from the quarantine. {listed} " + "; ".join(notes),
+                  "success")
+            return redirect(url_for("quarantine.index"))
         db.session.delete(item)
         db.session.commit()
         sync_all()
@@ -189,8 +187,6 @@ def bulk():
             if act == "release":
                 if item.is_virus:
                     failed.append(f"#{item.id}: contains a virus, release it individually")
-                    continue
-                if item.released_at is not None:
                     continue
                 release(item, current_user.username)
             elif act == "learn_spam":
