@@ -324,11 +324,9 @@ table.checks .group-row th { background: none; color: var(--text); font-size: .9
 .corner-toggle { position: absolute; top: 1rem; right: 1rem; }
 
 /* Live regions (static/app.js): periodic refresh and in-place actions */
-.live-status { margin: 0 0 .5rem; font-size: .85rem; }
 .live:focus { outline: none; }
 .live.is-loading { opacity: .6; transition: opacity .2s; }
 
-/* Statistics: stacked bars drawn as SVG on the server */
 /* Dashboard: use of CPU, memory and storage */
 dl.props.meters dd { display: flex; flex-wrap: wrap; align-items: center; gap: .2rem .6rem; }
 dl.props.meters dd > div { flex-basis: 100%; }
@@ -337,6 +335,12 @@ dl.props.meters dd > div { flex-basis: 100%; }
 .meter .good { fill: var(--good); }
 .meter .warn { fill: var(--warn); }
 .meter .bad { fill: var(--bad); }
+/* Statistics: bars drawn as SVG on the server; hourly or daily (.chart-view) */
+.chart-card h3 { margin-top: 1.25rem; }
+.chart-card .card-head + h3 { margin-top: 0; }
+.chart-view { margin: 0; }
+.chart .scan { fill: var(--accent); }
+.chart .delivery { fill: var(--info); }
 .chart { width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--border, #ccc); stroke-width: 1; }
 .chart-times { display: flex; justify-content: space-between; color: var(--muted); font-size: .75rem; margin-top: .25rem; }

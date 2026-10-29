@@ -86,13 +86,13 @@
   }
 
   // ---------------------------------------------------------------------
-  // Live regions: <div data-live [data-live-refresh="seconds"]>
+  // Live regions: <div data-live>
   //
   // The server renders only the region when asked with the header
-  // X-Live-Fragment: 1 (views.render_live). Regions with a refresh interval
-  // reload periodically; forms with data-async are submitted in the
-  // background: the handler's redirect back to the page keeps the header,
-  // so the response is the updated region including the flashed messages.
+  // X-Live-Fragment: 1 (views.render_live). Forms with data-async are
+  // submitted in the background: the handler's redirect back to the page
+  // keeps the header, so the response is the updated region including the
+  // flashed messages.
   // Anything else (expired session, error page) is shown as a normal page.
   // ---------------------------------------------------------------------
   var FRAGMENT = "X-Live-Fragment";
@@ -122,66 +122,6 @@
       region.classList.remove("is-loading");
     });
   }
-
-  function timeNow() {
-    return new Date().toLocaleTimeString([], {hour: "2-digit", minute: "2-digit", second: "2-digit"});
-  }
-
-  // A refresh would discard what the user is doing in the region
-  function busy(region) {
-    return region.getAttribute("aria-busy") === "true"
-      || region.querySelector('input[type="checkbox"]:checked') !== null
-      || region.contains(document.activeElement) && document.activeElement !== region;
-  }
-
-  function setupRefresh(region) {
-    var seconds = parseInt(region.getAttribute("data-live-refresh"), 10);
-    if (!(seconds > 0)) {
-      return;
-    }
-    var status = document.createElement("p");
-    status.className = "live-status muted";
-    var text = document.createElement("span");
-    text.textContent = "Updates every " + seconds + " s";
-    var pause = document.createElement("button");
-    pause.type = "button";
-    pause.className = "link-button";
-    pause.textContent = "Pause";
-    status.appendChild(text);
-    status.appendChild(document.createTextNode(" · "));
-    status.appendChild(pause);
-    region.parentNode.insertBefore(status, region);
-
-    var paused = false;
-    var failures = 0;
-    pause.addEventListener("click", function () {
-      paused = !paused;
-      pause.textContent = paused ? "Resume" : "Pause";
-      text.textContent = paused ? "Updates paused" : "Updates every " + seconds + " s";
-    });
-
-    function tick() {
-      if (paused || document.hidden || busy(region)) {
-        window.setTimeout(tick, seconds * 1000);
-        return;
-      }
-      fetchRegion(region, window.location.href).then(function () {
-        failures = 0;
-        if (!paused) {
-          text.textContent = "Updated " + timeNow() + ", every " + seconds + " s";
-        }
-      }).catch(function () {
-        failures += 1;
-        text.textContent = "Update failed at " + timeNow() + ", retrying";
-      }).finally(function () {
-        // back off while the server does not answer
-        window.setTimeout(tick, seconds * 1000 * Math.min(1 + failures, 6));
-      });
-    }
-    window.setTimeout(tick, seconds * 1000);
-  }
-
-  document.querySelectorAll("[data-live]").forEach(setupRefresh);
 
   // In-place forms: after the confirmation handler above (registered first)
   document.addEventListener("submit", function (event) {

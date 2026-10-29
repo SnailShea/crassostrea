@@ -17,8 +17,6 @@ from . import store
 PROPERTIES = ("Id", "Description", "LoadState", "ActiveState", "SubState", "ActiveEnterTimestamp")
 # Filesystems whose use is reported (each one once)
 DISK_PATHS = ("/", "/var", "/var/lib/mysql", "/var/spool/postfix")
-# The CPU counters this process read last: (monotonic time, busy, total)
-_cpu_last = []
 
 
 class SystemStatusError(Exception):
@@ -68,17 +66,11 @@ def _cpu_counters():
 
 
 def cpu_percent(sample=0.25):
-    """The CPU use since this process last read it (the dashboard refreshes
-    every 30 s), or over ``sample`` seconds when that was long ago."""
-    now = time.monotonic()
-    if not _cpu_last or not 1 <= now - _cpu_last[0] <= 600:
-        _cpu_last[:] = [now, *_cpu_counters()]
-        time.sleep(sample)
-        now = time.monotonic()
+    """The CPU use over ``sample`` seconds."""
+    busy_before, total_before = _cpu_counters()
+    time.sleep(sample)
     busy, total = _cpu_counters()
-    previous_busy, previous_total = _cpu_last[1:]
-    _cpu_last[:] = [now, busy, total]
-    return round(100.0 * (busy - previous_busy) / (total - previous_total), 1) if total > previous_total else 0.0
+    return round(100.0 * (busy - busy_before) / (total - total_before), 1) if total > total_before else 0.0
 
 
 def memory():

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from crassostrea.extensions import db
-from crassostrea.models import MailDelivery, MailLogEntry, set_setting, utcnow
+from crassostrea.models import DeliveryBucket, Domain, MailDelivery, MailLogEntry, set_setting, utcnow
 from crassostrea.services import deliveries, maillog
 
 REPO = Path(__file__).resolve().parents[3]
@@ -177,29 +177,34 @@ def test_filter(app):
     assert maillog.filtered(delivery="nonsense").count() == 4
 
 
-def test_average_delay(app):
+def _counted():
+    return {(b.domain, b.direction): (b.deliveries, b.delay) for b in DeliveryBucket.query}
+
+
+def test_sent_recipients_are_counted_once(app):
+    db.session.add(Domain(name="example.org", destination_host="mx.internal"))
     _entry(qid="AAAAAA1111", rcpts="bob@example.org,c@example.org")
-    _entry(qid="BBBBBB2222", rcpts="x@partner.example,y@partner.example", direction="outbound")
-    deliveries.record(_event(qid="AAAAAA1111", delay=2.0))
-    deliveries.record(_event(qid="AAAAAA1111", rcpt="c@example.org", delay=4))
-    deliveries.record(_event(qid="BBBBBB2222", rcpt="x@partner.example", delay=60.0))
-    # still waiting: not delivered
-    deliveries.record(_event(qid="BBBBBB2222", rcpt="y@partner.example", status="deferred", dsn="4.4.1", delay=900))
+    _entry(qid="BBBBBB2222", rcpts="x@partner.example", direction="outbound", created=_at(120))
+    deliveries.record(_event(qid="AAAAAA1111", status="deferred", dsn="4.4.1", delay=30, time=NOW - 60))
+    deliveries.record(_event(qid="AAAAAA1111", delay=90))
+    deliveries.record(_event(qid="AAAAAA1111", delay=90))  # the same line again
+    deliveries.record(_event(qid="AAAAAA1111", status="deferred", dsn="4.4.1", delay=30, time=NOW - 30))  # late
+    deliveries.record(_event(qid="AAAAAA1111", rcpt="c@example.org", delay=10.5))
+    deliveries.record(_event(qid="BBBBBB2222", rcpt="x@partner.example", delay=4))
     deliveries.record(_event(qid="CCCCCC3333", delay=1.0))  # not in the mail log
+    deliveries.record(_event(qid="DDDDDD4444", rcpt="c@example.org"))  # no delay
     db.session.commit()
-    start, end = _at(3600), _at(-60)
-    assert deliveries.average_delay(start, end) == (22.0, 3)
-    assert deliveries.average_delay(start, end, direction="inbound") == (3.0, 2)
-    assert deliveries.average_delay(start, end, domain="partner.example") == (60.0, 1)
-    assert deliveries.average_delay(start, end, domains={"example.org"}) == (3.0, 2)
-    assert deliveries.average_delay(start, end, domains=set()) == (None, 0)
-    assert deliveries.average_delay(_at(-60), _at(-120)) == (None, 0)
+    # inbound per recipient domain, outbound per sender domain (stats._domain)
+    assert _counted() == {("example.org", "inbound"): (2, 100.5), ("sender.example", "outbound"): (1, 4.0)}
 
 
-@pytest.mark.parametrize("delay, stored", [(5.6, 5.6), (0, 0.0), (None, None), ("5", None), (True, None), (-1, None),
-                                           (10 ** 9, None)])
-def test_record_keeps_a_plausible_delay(app, delay, stored):
-    assert deliveries.record(_event(delay=delay)).delay == stored
+@pytest.mark.parametrize("delay, counted", [(5.6, 5.6), (0, 0.0), ("5", None), (True, None), (-1, None),
+                                            (10 ** 9, None)])
+def test_only_a_plausible_delay_counts(app, delay, counted):
+    _entry()
+    deliveries.record(_event(delay=delay))
+    db.session.commit()
+    assert [b.delay for b in DeliveryBucket.query] == ([] if counted is None else [counted])
 
 
 def test_internal_api(internal_app):

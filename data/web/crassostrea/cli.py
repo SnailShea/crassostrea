@@ -101,7 +101,6 @@ def _init_database():
 _MIGRATIONS = [
     ("mail_log", "reject_reason", "VARCHAR(255) NOT NULL DEFAULT ''"),
     ("stats_hourly", "scan_ms", "BIGINT NOT NULL DEFAULT 0"),
-    ("mail_delivery", "delay", "FLOAT"),
 ]
 
 

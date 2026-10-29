@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timedelta
 
 from crassostrea.extensions import db
-from crassostrea.models import Domain, MailLogEntry, StatBucket, set_setting, utcnow
+from crassostrea.models import DeliveryBucket, Domain, MailLogEntry, StatBucket, set_setting, utcnow
 from crassostrea.services import stats
 
 RAW = b"From: a@sender.example\r\nTo: bob@example.com\r\nSubject: Hi\r\n\r\nHello\r\n"
@@ -78,12 +78,37 @@ def test_scan_time(internal_app, app):
     assert stats.series("24h", direction="outbound", now=now)["totals"]["scan_ms"] is None
 
 
+def test_delivery_time(app):
+    now = datetime(2026, 10, 21, 10, 30)
+    for hours_ago, domain, direction, delivered, delay in ((1, "example.com", "inbound", 4, 10.0),
+                                                           (1, "example.com", "outbound", 1, 50.0),
+                                                           (3, "other.example", "inbound", 2, 3.0),
+                                                           (30, "example.com", "inbound", 1, 99.0)):
+        db.session.add(DeliveryBucket(hour=(now - timedelta(hours=hours_ago)).replace(minute=0), domain=domain,
+                                      direction=direction, deliveries=delivered, delay=delay))
+    db.session.commit()
+    day = stats.series("24h", now=now)
+    assert (day["totals"]["delivery_s"], day["totals"]["delivered"]) == (9.0, 7)
+    assert day["buckets"][-2]["delivery_s"] == 12.0 and day["buckets"][-4]["delivery_s"] == 1.5
+    assert day["buckets"][-1]["delivery_s"] is None and day["buckets"][-1]["delivered"] == 0
+    assert stats.series("24h", now=now, domains={"other.example"})["totals"]["delivery_s"] == 1.5
+    assert stats.series("24h", direction="outbound", now=now)["totals"]["delivery_s"] == 50.0
+    assert stats.series("30d", now=now)["totals"]["delivered"] == 8
+    chart = stats.latency_chart(day, "delivery_s")
+    assert chart["peak"] == 12.0 and chart["bars"][-2]["h"] == chart["height"] and chart["bars"][-1]["h"] == 0
+    assert stats.latency_chart(stats.series("24h", now=now - timedelta(days=90)), "scan_ms")["peak"] == 0
+    # kept as long as the statistics
+    set_setting("stats_retention_days", 1)
+    stats.cleanup()
+    db.session.commit()
+    assert DeliveryBucket.query.count() == 0
+
+
 def test_init_db_adds_the_new_columns(app):
-    for table, column in (("stats_hourly", "scan_ms"), ("mail_delivery", "delay")):
-        with db.engine.begin() as conn:
-            conn.execute(db.text(f"ALTER TABLE {table} DROP COLUMN {column}"))
+    with db.engine.begin() as conn:
+        conn.execute(db.text("ALTER TABLE stats_hourly DROP COLUMN scan_ms"))
     output = app.test_cli_runner().invoke(args=["init-db"]).output
-    assert "added stats_hourly.scan_ms" in output and "added mail_delivery.delay" in output
+    assert "added stats_hourly.scan_ms" in output
     db.session.add(StatBucket(hour=utcnow(), domain="", direction="inbound", category="clean", messages=1))
     db.session.commit()
     assert StatBucket.query.one().scan_ms == 0

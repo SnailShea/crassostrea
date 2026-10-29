@@ -88,9 +88,9 @@ def back(endpoint, **values):
 def render_live(template, fragment, **context):
     """Render a page, or only its live region when the page's script asks for
     it (header X-Live-Fragment: 1, see static/app.js): after an in-page form
-    submission (the redirect back to the page keeps the header) and for the
-    periodic refresh. ``fragment`` is the template of the region, which the
-    page includes; it shows the flashed messages itself in that case.
+    submission (the redirect back to the page keeps the header). ``fragment``
+    is the template of the region, which the page includes; it shows the
+    flashed messages itself in that case.
     """
     if request.headers.get(LIVE_HEADER) == "1":
         response = make_response(render_template(fragment, live_fragment=True, **context))

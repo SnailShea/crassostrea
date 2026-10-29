@@ -16,6 +16,34 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-29
+
+### Added
+
+- **Processing time per hour**: the delivery time (Postfix's delay of each
+  delivered recipient of logged mail) is counted per hour (new table
+  `delivery_hourly`, created by `init-db`) and kept as long as the
+  statistics; the dashboard draws the average scan and delivery time per
+  hour or day. `GET /api/v1/statistics` returns `scan_ms`, `delivery_s` and
+  `delivered` per bucket and in its totals.
+
+### Changed
+
+- **Dashboard**: the filter (period, direction, domain) is gone; a dropdown
+  of the **Over time** card switches between hourly (last 24 hours) and
+  daily (last 30 days), and the totals, processing time and busiest domains
+  follow it. The busiest domains link to their mail log.
+- **Pages no longer update themselves** (dashboard, mail log, quarantine,
+  mail queue, logs, monitoring, bans, audit log, cluster and the status
+  parts of IP addressing, Certificates & TLS and Backups): reload a page to
+  see changes. List actions still apply without reloading.
+
+### Removed
+
+- `mail_delivery.delay` (0.4.0) and the dashboard's average over the mail
+  log's deliveries: the hourly counter replaces them. The column stays in
+  existing databases, unused.
+
 ## [0.4.1] - 2026-10-29
 
 ### Changed
@@ -163,7 +191,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/SnailShea/crassostrea/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/SnailShea/crassostrea/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SnailShea/crassostrea/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SnailShea/crassostrea/compare/v0.2.1...v0.3.0

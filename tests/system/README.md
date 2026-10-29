@@ -20,7 +20,7 @@ tests/system/run.sh valkey acme  # selected tests
 | `keepalived` | The floating address on a public network, VRRP on the cluster network, a router following failovers by gratuitous ARP; failovers on a failed health check and on the public interface going down, `nopreempt`, a split cluster network |
 | `acme` | nginx of two nodes answering each other's ACME challenges, without loops |
 | `netfilter` | Bans with real nftables on a single gateway, and shared bans of two cluster nodes |
-| `js` | `static/app.js` in jsdom: in-place forms, confirmation, periodic refresh, pausing, error handling |
+| `js` | `static/app.js` in jsdom: in-place forms, confirmation, no periodic refresh, error handling |
 
 Requirements: an EL10 host with dnf access to the distribution repositories,
 unprivileged user namespaces, `nft`, `curl`, `openssl`, `python3` with

@@ -12,7 +12,7 @@
 </div>
 
 {% if not config.CLUSTER_NODES %}
-<div class="live" data-live data-live-refresh="5">
+<div class="live" data-live>
 {% include "_cluster_setup_status.html" %}
 </div>
 
@@ -68,7 +68,7 @@
   <span class="mono">system/cluster.sh bundle</span> joins one (<span class="mono">setup.sh --join</span>). A witness
   host is added that way.</p>
 {% else %}
-<div class="live" data-live data-live-refresh="10">
+<div class="live" data-live>
 {% include "_cluster_manage_live.html" %}
 </div>
 

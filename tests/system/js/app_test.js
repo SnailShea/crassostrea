@@ -19,7 +19,7 @@ const HTML = `<!doctype html><html><body>
     <button id="flush" type="submit" name="action" value="flush">Flush</button>
   </form>
 </div>
-<div class="card"><div id="region" class="live" data-live data-live-refresh="1">
+<div class="card"><div id="region" class="live" data-live>
   <form id="bulk" method="post" action="/queue/action" data-async>
     <input type="hidden" name="csrf_token" value="tok">
     <input id="all" type="checkbox" data-select-all="ids">
@@ -97,7 +97,7 @@ function fragment(html, url) {
     check("page-head form updates the region", calls.length === 2 && calls[1].options.body.get("action") === "flush");
 
     // a declined confirmation sends nothing
-    t.d.getElementById("region").innerHTML = HTML.split('<div id="region" class="live" data-live data-live-refresh="1">')[1]
+    t.d.getElementById("region").innerHTML = HTML.split('<div id="region" class="live" data-live>')[1]
       .split("</div></div>")[0];
     w.__confirm = false;
     d.getElementById("bulk").requestSubmit(d.getElementById("delete"));
@@ -139,47 +139,11 @@ function fragment(html, url) {
     t.dom.window.close();
   }
 
-  // --- periodic refresh -----------------------------------------------------
+  // --- no periodic refresh -------------------------------------------------
   {
-    let n = 0;
-    const t = setup(() => { n += 1; return fragment(`<p id="tick">${n}</p>` + '<input type="checkbox" name="ids" value="A">'); });
-    const status = t.d.querySelector(".live-status");
-    check("status line added before the region", status !== null && status.nextElementSibling.id === "region");
+    const t = setup(() => fragment("<p>x</p>"));
     await sleep(1300);
-    check("refreshes with GET of the current URL",
-          t.calls.length === 1 && t.calls[0].url === "https://gw.example/queue/?x=1"
-          && !t.calls[0].options.method && t.calls[0].options.headers["X-Live-Fragment"] === "1");
-    check("region replaced", t.d.getElementById("tick").textContent === "1");
-    check("status shows the time", /Updated .*every 1 s/.test(status.textContent));
-
-    // a checked box pauses the refresh (the user is selecting)
-    t.d.querySelector('#region input[name="ids"]').checked = true;
-    await sleep(1300);
-    check("no refresh while something is selected", t.calls.length === 1);
-    t.d.querySelector('#region input[name="ids"]').checked = false;
-    await sleep(1200);
-    check("refresh resumes", t.calls.length === 2);
-
-    // pause button
-    status.querySelector("button").click();
-    const before = t.calls.length;
-    await sleep(1300);
-    check("paused: no refresh", t.calls.length === before && status.textContent.includes("paused"));
-    status.querySelector("button").click();
-    await sleep(1200);
-    check("resumed", t.calls.length === before + 1);
-    t.dom.window.close();
-  }
-
-  {
-    const t = setup(() => Promise.resolve({ok: false, status: 500, url: "https://gw.example/queue/",
-                                           headers: {get: () => "1"}, text: () => Promise.resolve("")}));
-    await sleep(1300);
-    const status = t.d.querySelector(".live-status");
-    check("failed refresh reported", status.textContent.includes("Update failed"));
-    check("region kept", t.d.getElementById("bulk") !== null);
-    await sleep(1300);
-    check("backs off after a failure", t.calls.length === 1);
+    check("no periodic refresh", t.calls.length === 0 && t.d.querySelector(".live-status") === null);
     t.dom.window.close();
   }
 

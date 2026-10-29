@@ -277,20 +277,21 @@ def test_tested_names_stay_in_the_form(logged_in, gateway):
     assert ">new.example.com\nother.example.com</textarea>" in page
 
 
-def test_apply_appears_without_reloading(logged_in, gateway):
-    """Regression: Apply stayed disabled until the page was reloaded. The step
-    is in the live region, which the page refreshes every 5 seconds."""
+def test_apply_follows_the_staging_test(logged_in, gateway):
+    """Apply is enabled once the staging test passed. The step is in the live
+    region, which in-page submissions update; the page does not refresh
+    itself."""
     live = {"X-Live-Fragment": "1"}
     _status(gateway, le_test={"state": "running", "at": int(time.time()), "names": [HOST, "mail.example.com"]})
     page = logged_in.get("/tls/?mode=letsencrypt").get_data(as_text=True)
-    assert 'data-live data-live-refresh="5"' in page and page.index('id="staging-test"') > page.index('data-live ')
+    assert "data-live-refresh" not in page and page.index('id="staging-test"') > page.index('data-live>')
     assert "disabled" in _apply_button(page)
     # the other forms stay usable while a change runs (the server refuses a second one)
     test_button = page[page.index("Test with staging") - 80:page.index("Test with staging")]
     assert "disabled" not in test_button
     fragment = logged_in.get("/tls/?mode=letsencrypt", headers=live).get_data(as_text=True)
     assert "testing…" in fragment and "disabled" in _apply_button(fragment)
-    # the test finished: the next refresh brings the enabled button
+    # the test finished: the next request brings the enabled button
     _status(gateway, le_test={"state": "ok", "at": int(time.time()), "names": [HOST, "mail.example.com"]})
     fragment = logged_in.get("/tls/?mode=letsencrypt", headers=live).get_data(as_text=True)
     assert "disabled" not in _apply_button(fragment) and 'name="names" value="mail.example.com"' in fragment

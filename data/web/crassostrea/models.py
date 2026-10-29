@@ -392,6 +392,22 @@ class StatBucket(db.Model):
     scan_ms = db.Column(db.BigInteger, nullable=False, default=0, server_default="0")
 
 
+class DeliveryBucket(db.Model):
+    """Recipients delivered in an hour, per domain and direction, and the
+    time from their message's arrival, summed (services/stats.py); kept as
+    long as the statistics."""
+    __tablename__ = "delivery_hourly"
+    __table_args__ = (db.UniqueConstraint("hour", "domain", "direction"),)
+
+    id = db.Column(db.Integer, primary_key=True)
+    hour = db.Column(db.DateTime, nullable=False, index=True)
+    domain = db.Column(db.String(253), nullable=False, default="")
+    direction = db.Column(db.String(8), nullable=False)
+    deliveries = db.Column(db.Integer, nullable=False, default=0)
+    # Postfix's delay, summed (seconds)
+    delay = db.Column(db.Float, nullable=False, default=0)
+
+
 class DmarcReport(db.Model):
     """A DMARC aggregate report about a protected domain (services/reports.py)."""
     __tablename__ = "dmarc_reports"
@@ -584,8 +600,6 @@ class MailDelivery(db.Model):
     detail = db.Column(db.String(500), nullable=False, default="")
     notice_qid = db.Column(db.String(32), nullable=False, default="")
     attempts = db.Column(db.Integer, nullable=False, default=1)
-    # Postfix's delay of the latest attempt: seconds since the message arrived
-    delay = db.Column(db.Float)
     first_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     last_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
 

@@ -16,7 +16,7 @@
   {% if setup %}<p class="muted">Last cluster setup: {{ setup.message }}</p>{% endif %}
 </div>
 {% else %}
-<div class="live" data-live data-live-refresh="10">
+<div class="live" data-live>
 {% include "_cluster_live.html" %}
 </div>
 {% endif %}

@@ -1,4 +1,4 @@
-"""Live regions: page fragments for the periodic refresh and in-place forms."""
+"""Live regions: page fragments for in-place forms."""
 import pytest
 
 from crassostrea.extensions import db
@@ -8,7 +8,7 @@ from crassostrea.services import accounts, postfix_control
 from test_pages import backends_up, data  # noqa: F401 - fixtures
 
 LIVE = {"X-Live-Fragment": "1"}
-PAGES = ["/", "/queue/", "/logs", "/mail-log/", "/bans", "/lists/allow", "/lists/block", "/admins/", "/mailboxes/", "/quarantine/"]
+PAGES = ["/queue/", "/logs", "/mail-log/", "/bans", "/lists/allow", "/lists/block", "/admins/", "/mailboxes/", "/quarantine/"]
 
 
 @pytest.mark.parametrize("path", PAGES)

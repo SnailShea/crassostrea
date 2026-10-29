@@ -1,10 +1,8 @@
 """The dashboard's statistics of the gateway itself: the mail queue by
 direction, the use of CPU, memory and storage and how long scanning and
-delivery took."""
+delivery took, hourly or daily."""
 import io
 import time
-from datetime import timedelta
-
 import pytest
 
 from crassostrea.extensions import db
@@ -53,14 +51,12 @@ def test_queue_by_direction(gateway):
 
 
 def test_cpu_percent(monkeypatch):
-    counters = iter([(100, 1000), (150, 1100), (450, 1500)])
+    counters = iter([(100, 1000), (175, 1100), (175, 1100), (175, 1100)])
     monkeypatch.setattr(system, "_cpu_counters", lambda: next(counters))
-    monkeypatch.setattr(system, "_cpu_last", [])
     slept = []
     monkeypatch.setattr(system.time, "sleep", slept.append)
-    assert system.cpu_percent() == 50.0 and slept == [0.25]  # first reading: a sample
-    system._cpu_last[0] -= 30  # the next refresh: since the last reading
     assert system.cpu_percent() == 75.0 and slept == [0.25]
+    assert system.cpu_percent() == 0.0  # no time passed: no division by zero
 
 
 def test_memory_and_disks(monkeypatch):
@@ -105,8 +101,9 @@ def test_dashboard(logged_in, gateway, backends):
                        "status": "sent", "dsn": "2.0.0", "relay": "mx.internal[10.0.0.5]:25", "detail": "250 Ok",
                        "delay": 4.2})
     db.session.commit()
-    page = logged_in.get("/?range=24h").get_data(as_text=True)
+    page = logged_in.get("/").get_data(as_text=True)
     assert "<dt>Scan</dt><dd>250 ms</dd>" in page and "<dt>Delivery</dt><dd>4.2 s" in page and "over 1 delivery" in page
+    assert "Averages of the last 24 hours" in page
     queue = page.split("<h2>Mail queue</h2>")[1].split("</table>")[0]
     assert '<td>Being delivered</td><td class="num">1</td><td class="num">1</td>' in queue
     assert '<td>Deferred</td><td class="num">1</td><td class="num">1</td>' in queue
@@ -115,9 +112,18 @@ def test_dashboard(logged_in, gateway, backends):
     assert "38%" in system_card and "load 0.52 / 0.4 / 0.35 on 4 CPUs" in system_card
     assert 'class="warn" width="87.5"' in system_card and "88% of 8.0 GiB" in system_card
     assert 'class="bad" width="93.0"' in system_card and "3.0 GiB free of 50.0 GiB" in system_card
-    # the period filters the averages
-    page = logged_in.get("/?range=24h&direction=outbound").get_data(as_text=True)
-    assert "<dt>Scan</dt><dd>–</dd>" in page and "<dt>Delivery</dt><dd>–</dd>" in page
+    # hourly: the averages of the hour, a bar each
+    graph = page.split("<h2>Over time</h2>")[1]
+    assert '<option value="hourly" selected>' in graph and "data-autosubmit" in graph
+    assert graph.count('<rect class="scan"') == 1 and graph.count('<rect class="delivery"') == 1
+    assert "Average scan time <span class=\"muted small\">at most 250 ms" in graph
+    assert "Average delivery time <span class=\"muted small\">at most 4.2 s" in graph
+    # no filter, no refresh
+    assert 'name="direction"' not in page and 'name="domain"' not in page and "data-live" not in page
+    page = logged_in.get("/?view=daily").get_data(as_text=True)
+    assert '<option value="daily" selected>' in page and "Averages of the last 30 days" in page
+    assert "at most 4 per day" in page and "<dt>Scan</dt><dd>250 ms</dd>" in page
+    assert '<option value="hourly" selected>' in logged_in.get("/?view=weekly").get_data(as_text=True)
 
 
 def test_dashboard_without_the_queue(logged_in, backends, monkeypatch):
@@ -128,10 +134,3 @@ def test_dashboard_without_the_queue(logged_in, backends, monkeypatch):
     assert "The mail queue cannot be read: Postfix control service is not reachable" in page
     assert "System load" in page
 
-
-def test_old_deliveries_are_not_averaged(app, gateway):
-    deliveries.record({"time": int(time.time()) - 3 * 86400, "kind": "delivery", "qid": "EEEEEE5555",
-                       "rcpt": "carol@example.com", "status": "sent", "dsn": "2.0.0", "relay": "mx", "detail": "",
-                       "delay": 9.0})
-    db.session.commit()
-    assert deliveries.average_delay(utcnow() - timedelta(hours=24), utcnow()) == (None, 0)

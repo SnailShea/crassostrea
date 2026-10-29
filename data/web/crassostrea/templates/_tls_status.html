@@ -1,7 +1,7 @@
 {% if live_fragment %}{% include "_flashes.html" %}{% endif %}
 {% from "_macros.html" import csrf %}
 {# Staging test of the Let's Encrypt names and the Apply step: in the live
-   region, so the result and the button appear without reloading the page #}
+   region, so an in-page submission updates the result and the button #}
 {% if mode == 'letsencrypt' and not settings.cluster %}
 <form method="post" action="{{ url_for('tls.letsencrypt_apply') }}" class="card" id="staging-test">
   {{ csrf() }}

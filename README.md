@@ -124,16 +124,16 @@ existing mail server. A Flask web interface manages it.
 - **Quarantine**: rejected mail is stored per recipient. You can release it,
   release and learn it as ham, learn it as spam, download it or delete it.
   Retention and maximum size are configurable.
-- **Statistics** (Dashboard): scanned messages per hour by outcome (clean, marked as spam,
-  greylisted/deferred, rejected) and viruses, for the last 24 hours, 7 or 30
-  days or 12 months, per domain and direction, with the busiest domains;
-  domain administrators see their domains.
-  Counted as mail is logged and kept two years by default (much longer than
-  the mail log); filled from the mail log once after an update. Also
-  `/api/v1/statistics`. The dashboard also shows the average processing
-  time of the period (Rspamd's scan, and Postfix's time from arrival to
-  delivery) and, for full administrators, the mail queue inbound and
-  outbound and the node's use of CPU, memory and storage.
+- **Statistics** (Dashboard): scanned messages by outcome (clean, marked as spam,
+  greylisted/deferred, rejected) and viruses, and the average processing time
+  (Rspamd's scan, and Postfix's time from arrival to delivery), hourly for
+  the last 24 hours or daily for the last 30 days, with the busiest domains;
+  domain administrators see their domains. For full administrators also the
+  mail queue inbound and outbound and the node's use of CPU, memory and
+  storage. Counted per hour as mail is logged and delivered and kept two
+  years by default (much longer than the mail log); filled from the mail log
+  once after an update. Also `/api/v1/statistics` (also 7 days and 12
+  months, per domain and direction).
 - **Journaling** (Mail log → Journaling): a copy of every accepted inbound and/or outbound
   message (optionally rejected ones too) to an archive address (MailStore,
   an Exchange or Microsoft 365 journal mailbox, ...): a journal report with
@@ -324,10 +324,8 @@ existing mail server. A Flask web interface manages it.
   the journal of Rspamd, ClamAV, the web interface, nginx, the database,
   Valkey, unbound, the watchdog, jobs and more, one service at a time, read by
   a root helper that only reads those units), banned IPs (with unban), and
-  multiple administrators. The dashboard, queue, logs,
-  mail log, bans and quarantine update themselves every 10-30 seconds (paused
-  while you select entries), and list actions apply without reloading the
-  page. Everything also works without JavaScript.
+  multiple administrators. List actions apply without reloading the page;
+  pages do not update themselves. Everything also works without JavaScript.
 - **DNS & ports** check: lists the records and connections the gateway needs
   and tests them from the server: the hostname's address, reverse DNS and CAA,
   each domain's MX (warning about backup MX hosts that bypass the filter), the

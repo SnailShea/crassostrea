@@ -84,7 +84,7 @@ def test_dashboard_and_queue_content(logged_in, backends_up, data):
     # the gateway first, then the quarantine and domains, then the statistics
     order = [page.index(h) for h in (b"<h2>Processing time</h2>", b"<h2>Mail queue</h2>", b"<h2>System load</h2>",
                                      b"<h2>Quarantine</h2>", b"<h2>Busiest domains</h2>", b'<div class="stats">',
-                                     b"<h2>Over time</h2>")]
+                                     b"<h2>Over time</h2>", b'<select name="view"')]
     assert order == sorted(order)
     assert b"postfix.service" not in page  # the services are on the Monitoring page
     page = logged_in.get("/monitoring/").data

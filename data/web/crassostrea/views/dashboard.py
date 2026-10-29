@@ -1,53 +1,42 @@
-"""Dashboard: the statistics of the scanned mail (services/stats.py), how
-long scanning and delivery took and the quarantine, and for full
-administrators the health of the gateway, its mail queue by direction, its
-use of CPU, memory and storage and its cluster. Domain administrators see
-their domains only."""
+"""Dashboard: the statistics of the scanned mail and how long scanning and
+delivery took (services/stats.py), hourly for the last 24 hours or daily for
+the last 30 days, the quarantine, and for full administrators the health of
+the gateway, its mail queue by direction, its use of CPU, memory and storage
+and its cluster. Domain administrators see their domains only."""
 from datetime import timedelta
 
-from flask import request
+from flask import render_template, request
 from flask_login import current_user
 
 from ..extensions import db
 from ..models import Domain, QuarantineItem, utcnow
-from ..services import cluster as cluster_service, deliveries, monitoring, postfix_control, stats, store, system
+from ..services import cluster as cluster_service, monitoring, postfix_control, stats, store, system
 from ..services.rspamd import RspamdError, client
-from . import in_scope, protected_blueprint, render_live, scope
+from . import in_scope, protected_blueprint, scope
 
 bp = protected_blueprint("dashboard", __name__, domain_admins=True)
 # The rows of the mail queue card: Postfix's queues (mail passes incoming and
 # maildrop in moments)
 QUEUE_ROWS = {"Being delivered": ("maildrop", "incoming", "active"), "Deferred": ("deferred",),
               "On hold": ("hold",)}
-
-
-def filters():
-    """Period, direction and domain of the statistics (query string)."""
-    range_key = request.args.get("range", "7d")
-    direction = request.args.get("direction", "")
-    domain = request.args.get("domain", "").strip().lower()
-    return (range_key if range_key in stats.RANGES else "7d",
-            direction if direction in ("inbound", "outbound") else "",
-            domain if domain and in_scope(domain) else "")
+# The graph's views: (range of services/stats.py, label)
+VIEWS = {"hourly": ("24h", "Hourly, last 24 hours"), "daily": ("30d", "Daily, last 30 days")}
 
 
 @bp.get("/")
 def index():
-    range_key, direction, domain = filters()
+    view = request.args.get("view", "hourly")
+    view = view if view in VIEWS else "hourly"
     allowed = scope()
-    data = stats.series(range_key, domain, direction, domains=allowed)
+    data = stats.series(VIEWS[view][0], domains=allowed)
 
     since = utcnow() - timedelta(hours=24)
     quarantined = QuarantineItem.query
     if allowed is not None:
         quarantined = quarantined.filter(QuarantineItem.domain.in_(sorted(allowed) or [""]))
-    if domain:
-        quarantined = quarantined.filter(QuarantineItem.domain == domain)
     quarantine = {"total": quarantined.count(),
                   "last_24h": quarantined.filter(QuarantineItem.created_at >= since).count()}
     scoped = [d for d in Domain.query.order_by(Domain.name) if in_scope(d.name)]
-    domains = [d.name for d in scoped]
-    delivery_delay, delivered = deliveries.average_delay(data["start"], data["end"], direction, domain, allowed)
 
     errors, health, cluster, learned, queue, queue_error, resources = [], None, None, None, None, None, None
     if current_user.is_full_admin:
@@ -74,13 +63,14 @@ def index():
                 db.session.rollback()
                 cluster["problems"] = None
 
-    return render_live("dashboard.html", "_dashboard_live.html", data=data, chart=stats.chart(data),
-                       categories=stats.CATEGORIES, ranges=stats.RANGES, range_key=range_key, direction=direction,
-                       domain=domain, domains=domains, quarantine=quarantine, health=health,
-                       cluster=cluster, learned=learned, queue=queue, queue_error=queue_error,
-                       resources=resources, delivery_delay=delivery_delay, delivered=delivered,
-                       domain_counts={"active": sum(1 for d in scoped if d.active), "total": len(scoped)},
-                       errors=errors)
+    return render_template("dashboard.html", data=data, chart=stats.chart(data),
+                           scan_chart=stats.latency_chart(data, "scan_ms"),
+                           delivery_chart=stats.latency_chart(data, "delivery_s"),
+                           categories=stats.CATEGORIES, views=VIEWS, view=view, quarantine=quarantine,
+                           health=health, cluster=cluster, learned=learned, queue=queue, queue_error=queue_error,
+                           resources=resources,
+                           domain_counts={"active": sum(1 for d in scoped if d.active), "total": len(scoped)},
+                           errors=errors)
 
 
 def _db_ok():

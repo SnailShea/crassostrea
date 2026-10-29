@@ -1495,8 +1495,11 @@ def _operations_schemas():
             "deferred": {"type": "integer"}, "rejected": {"type": "integer"}, "viruses": {"type": "integer"},
             "bytes": {"type": "integer", "description": "Only in totals"},
             "scan_ms": {"type": "integer", "nullable": True,
-                        "description": "Only in totals: rspamd's average scan time per message (milliseconds), "
-                                       "null without one"}}},
+                        "description": "rspamd's average scan time per message (milliseconds), null without one"},
+            "delivery_s": {"type": "number", "nullable": True,
+                           "description": "Average time from a message's arrival until the next server accepted "
+                                          "it, per delivered recipient (seconds), null without one"},
+            "delivered": {"type": "integer", "description": "Recipients delivered"}}},
         "DmarcReport": {"type": "object", "properties": {
             "id": ID, "org": {"type": "string"}, "report_id": {"type": "string"}, "domain": {"type": "string"},
             "policy": {"type": "string"}, "begin": TIMESTAMP, "end": TIMESTAMP, "messages": {"type": "integer"},
