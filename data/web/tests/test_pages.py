@@ -80,7 +80,12 @@ def test_domain_page_renders(logged_in, data):
 
 def test_dashboard_and_queue_content(logged_in, backends_up, data):
     page = logged_in.get("/").data
-    assert b"Busiest domains" in page and b"Messages learned" in page and b"Recent mail" in page
+    assert b"Busiest domains" in page and b"Messages learned" in page and b"Recent mail" not in page
+    # the gateway first, then the quarantine and domains, then the statistics
+    order = [page.index(h) for h in (b"<h2>Processing time</h2>", b"<h2>Mail queue</h2>", b"<h2>System load</h2>",
+                                     b"<h2>Quarantine</h2>", b"<h2>Busiest domains</h2>", b'<div class="stats">',
+                                     b"<h2>Over time</h2>")]
+    assert order == sorted(order)
     assert b"postfix.service" not in page  # the services are on the Monitoring page
     page = logged_in.get("/monitoring/").data
     assert b"postfix.service" in page and b"Fri 2026-10-16 10:00:00 UTC" in page

@@ -1,37 +1,7 @@
-{% from "_macros.html" import action_badge %}
 {% if live_fragment %}{% include "_flashes.html" %}{% endif %}
 {% for error in errors %}<div class="alert warning">{{ error }}</div>{% endfor %}
 {% set t = data.totals %}
 {% set tone = {'clean': 'good', 'spam': 'warn', 'rejected': 'bad', 'deferred': ''} %}
-<div class="stats">
-  <div class="stat"><div class="label">Messages ({{ t.bytes|filesize }})</div><div class="value">{{ "{:,}".format(t.total) }}</div></div>
-  {% for key, label in categories.items() %}
-  <div class="stat {{ tone[key] }}"><div class="label">{{ label }} ({{ ((100 * t[key] / t.total)|round(1)) if t.total else 0 }}%)</div>
-    <div class="value">{{ "{:,}".format(t[key]) }}</div></div>
-  {% endfor %}
-  <div class="stat {{ 'bad' if t.viruses }}"><div class="label">Viruses</div><div class="value">{{ "{:,}".format(t.viruses) }}</div></div>
-</div>
-
-<div class="card">
-  <div class="card-head"><h2>Over time</h2>
-    <span class="muted small">one bar per {{ {1: 'hour', 6: '6 hours', 24: 'day', 720: '30 days'}[data.bucket_hours] }}, at most {{ chart.peak }} messages</span></div>
-  <svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Messages over time">
-    <line class="axis" x1="0" y1="{{ chart.height }}" x2="{{ chart.width }}" y2="{{ chart.height }}"></line>
-    {% for bar in chart.bars %}
-    <g><title>{{ bar.start|datetime }}: {{ bar.total }} message(s)</title>
-      {% for cat, y, h in bar.segments %}<rect class="{{ cat }}" x="{{ bar.x }}" y="{{ y }}" width="{{ bar.w }}" height="{{ h }}"></rect>{% endfor %}
-    </g>
-    {% endfor %}
-  </svg>
-  {# outside the SVG, which scales with the page: the times keep the text size #}
-  <div class="chart-times">
-    {% for bar in chart.bars %}{% if loop.first or loop.last or loop.index0 == (chart.bars|length // 2) %}
-    <span>{{ bar.start|localtime('%H:%M' if data.bucket_hours < 24 else '%d %b') }}</span>
-    {% endif %}{% endfor %}
-  </div>
-  <div class="legend">{% for key, label in categories.items() %}<span><i class="{{ key }}"></i>{{ label }}</span>{% endfor %}</div>
-</div>
-
 {% macro meter(percent, text) %}
 {% if percent is none %}<span class="muted">cannot be read</span>{% else %}
 <svg class="meter" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
@@ -128,6 +98,35 @@
   </div>
 </div>
 
+<div class="stats">
+  <div class="stat"><div class="label">Messages ({{ t.bytes|filesize }})</div><div class="value">{{ "{:,}".format(t.total) }}</div></div>
+  {% for key, label in categories.items() %}
+  <div class="stat {{ tone[key] }}"><div class="label">{{ label }} ({{ ((100 * t[key] / t.total)|round(1)) if t.total else 0 }}%)</div>
+    <div class="value">{{ "{:,}".format(t[key]) }}</div></div>
+  {% endfor %}
+  <div class="stat {{ 'bad' if t.viruses }}"><div class="label">Viruses</div><div class="value">{{ "{:,}".format(t.viruses) }}</div></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Over time</h2>
+    <span class="muted small">one bar per {{ {1: 'hour', 6: '6 hours', 24: 'day', 720: '30 days'}[data.bucket_hours] }}, at most {{ chart.peak }} messages</span></div>
+  <svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="Messages over time">
+    <line class="axis" x1="0" y1="{{ chart.height }}" x2="{{ chart.width }}" y2="{{ chart.height }}"></line>
+    {% for bar in chart.bars %}
+    <g><title>{{ bar.start|datetime }}: {{ bar.total }} message(s)</title>
+      {% for cat, y, h in bar.segments %}<rect class="{{ cat }}" x="{{ bar.x }}" y="{{ y }}" width="{{ bar.w }}" height="{{ h }}"></rect>{% endfor %}
+    </g>
+    {% endfor %}
+  </svg>
+  {# outside the SVG, which scales with the page: the times keep the text size #}
+  <div class="chart-times">
+    {% for bar in chart.bars %}{% if loop.first or loop.last or loop.index0 == (chart.bars|length // 2) %}
+    <span>{{ bar.start|localtime('%H:%M' if data.bucket_hours < 24 else '%d %b') }}</span>
+    {% endif %}{% endfor %}
+  </div>
+  <div class="legend">{% for key, label in categories.items() %}<span><i class="{{ key }}"></i>{{ label }}</span>{% endfor %}</div>
+</div>
+
 {% if cluster %}
 <div class="card">
   <div class="card-head"><h2>Cluster</h2><a href="{{ url_for('cluster.index') }}">Members</a></div>
@@ -150,26 +149,3 @@
     this node.</p>
 </div>
 {% endif %}
-
-<div class="card">
-  <div class="card-head"><h2>Recent mail</h2><a href="{{ url_for('maillog.index') }}">Mail log</a></div>
-  <div class="table-wrap">
-  <table>
-    <thead><tr><th>Time</th><th>Action</th><th class="num">Score</th><th>From</th><th>To</th><th>Subject</th></tr></thead>
-    <tbody>
-    {% for entry in recent %}
-      <tr>
-        <td class="nowrap">{{ entry.created_at|datetime }}</td>
-        <td>{{ action_badge(entry.action) }}</td>
-        <td class="num">{{ '%.2f'|format(entry.score) }}</td>
-        <td class="truncate">{{ entry.sender or '<>' }}</td>
-        <td class="truncate">{{ entry.rcpt_list|join(', ') }}</td>
-        <td class="truncate"><a href="{{ url_for('maillog.show', entry_id=entry.id) }}">{{ entry.subject or '(no subject)' }}</a></td>
-      </tr>
-    {% else %}
-      <tr><td colspan="6" class="empty">No messages scanned yet.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
-  </div>
-</div>

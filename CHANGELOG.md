@@ -16,6 +16,15 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-29
+
+### Changed
+
+- **Dashboard layout**: the processing time, mail queue and system load
+  come first, then the quarantine, domains, health and busiest domains,
+  then the statistics. The recent mail list is gone; the mail log lists
+  the messages.
+
 ## [0.4.0] - 2026-10-29
 
 ### Added
@@ -154,7 +163,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/SnailShea/crassostrea/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/SnailShea/crassostrea/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/SnailShea/crassostrea/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/SnailShea/crassostrea/compare/v0.2.0...v0.2.1

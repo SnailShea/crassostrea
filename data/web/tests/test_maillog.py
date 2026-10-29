@@ -135,15 +135,6 @@ def test_download(logged_in, app):
     assert response.data == RAW and response.mimetype == "message/rfc822"
 
 
-def test_dashboard_lists_recent_mail(logged_in, app, monkeypatch):
-    from crassostrea.services import rspamd, system
-    monkeypatch.setattr(rspamd.RspamdClient, "stat", lambda self: {})
-    monkeypatch.setattr(system, "units", lambda: [])
-    entry = _entry(subject="Shown on the dashboard")
-    page = logged_in.get("/").get_data(as_text=True)
-    assert "Shown on the dashboard" in page and f"/mail-log/{entry.id}" in page
-
-
 # ---------------------------------------------------------------------------
 # Re-queueing
 # ---------------------------------------------------------------------------

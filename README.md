@@ -318,7 +318,7 @@ existing mail server. A Flask web interface manages it.
   scanned in full, by ClamAV too (up to 128 MiB, 90 s per scan, archives up to
   ClamAV's default depth and file count); what ClamAV cannot scan completely
   is not let through silently but scored `CLAM_SCAN_INCOMPLETE` (+4).
-- **Operations**: dashboard (statistics, processing time, mail queue, system load, health, recent mail), Monitoring
+- **Operations**: dashboard (processing time, mail queue, system load, health, statistics), Monitoring
   (checks and the state of every service), Postfix mail queue (flush, deliver,
   hold, delete), **Logs** (Monitoring → Logs: the Postfix log of all nodes and
   the journal of Rspamd, ClamAV, the web interface, nginx, the database,

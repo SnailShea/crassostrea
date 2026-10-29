@@ -1,5 +1,5 @@
 """Dashboard: the statistics of the scanned mail (services/stats.py), how
-long scanning and delivery took, the quarantine and recent mail, and for full
+long scanning and delivery took and the quarantine, and for full
 administrators the health of the gateway, its mail queue by direction, its
 use of CPU, memory and storage and its cluster. Domain administrators see
 their domains only."""
@@ -9,9 +9,8 @@ from flask import request
 from flask_login import current_user
 
 from ..extensions import db
-from ..models import Domain, MailLogEntry, QuarantineItem, utcnow
-from ..services import cluster as cluster_service, deliveries, maillog, monitoring, postfix_control, stats, store, \
-    system
+from ..models import Domain, QuarantineItem, utcnow
+from ..services import cluster as cluster_service, deliveries, monitoring, postfix_control, stats, store, system
 from ..services.rspamd import RspamdError, client
 from . import in_scope, protected_blueprint, render_live, scope
 
@@ -46,9 +45,6 @@ def index():
         quarantined = quarantined.filter(QuarantineItem.domain == domain)
     quarantine = {"total": quarantined.count(),
                   "last_24h": quarantined.filter(QuarantineItem.created_at >= since).count()}
-    # mail that arrived: refused recipients (no message) only crowd it out
-    recent = (maillog.filtered(direction=direction, domain=domain, domains=allowed)
-              .filter(MailLogEntry.reject_reason == "").limit(10).all())
     scoped = [d for d in Domain.query.order_by(Domain.name) if in_scope(d.name)]
     domains = [d.name for d in scoped]
     delivery_delay, delivered = deliveries.average_delay(data["start"], data["end"], direction, domain, allowed)
@@ -80,7 +76,7 @@ def index():
 
     return render_live("dashboard.html", "_dashboard_live.html", data=data, chart=stats.chart(data),
                        categories=stats.CATEGORIES, ranges=stats.RANGES, range_key=range_key, direction=direction,
-                       domain=domain, domains=domains, quarantine=quarantine, recent=recent, health=health,
+                       domain=domain, domains=domains, quarantine=quarantine, health=health,
                        cluster=cluster, learned=learned, queue=queue, queue_error=queue_error,
                        resources=resources, delivery_delay=delivery_delay, delivered=delivered,
                        domain_counts={"active": sum(1 for d in scoped if d.active), "total": len(scoped)},
