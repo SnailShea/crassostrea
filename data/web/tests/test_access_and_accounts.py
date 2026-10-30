@@ -34,7 +34,8 @@ SETTINGS_FORM = {"greylist_score": "5", "add_header_score": "6", "reject_score":
                  "digest_interval": "daily", "digest_token_days": "7", "mailbox_invite_days": "7",
                  "ptr_check": "off", "session_lifetime_minutes": "480", "login_max_failures": "10",
                  "login_max_account_failures": "30", "login_failure_window_minutes": "15",
-                 "postfix_log_lines": "9999", "http_redirect": "y", "virus_scanning": "y"}
+                 "postfix_log_lines": "9999", "http_redirect": "y", "virus_scanning": "y",
+                 "greylisting": "y"}
 
 
 @pytest.fixture
@@ -83,6 +84,7 @@ def test_virus_scanning_map(app, config):
     db.session.commit()
     sync_all()
     assert path.read_text().splitlines()[-1] == "virus_scanning 0"
+    assert "greylisting 1" in path.read_text().splitlines()
     with pytest.raises(ServiceError):
         filters.update_settings(virus_scanning="maybe")
     # rspamd.local.lua skips the ClamAV check with the map's 0
@@ -99,6 +101,38 @@ def test_virus_scanning_page(logged_in, config):
     assert "ClamAV is not installed" in logged_in.get("/settings/").get_data(as_text=True)
     assert logged_in.post("/settings/", data={**SETTINGS_FORM, "virus_scanning": ""}).status_code == 302
     assert get_setting("virus_scanning") == 0
+
+
+# ---------------------------------------------------------------------------
+# Greylisting
+# ---------------------------------------------------------------------------
+
+def test_greylisting_switch(logged_in, config):
+    assert get_setting("greylisting") == 1 and filters.get_settings()["greylisting"] is True
+    page = logged_in.get("/settings/").get_data(as_text=True)
+    assert 'name="greylisting"' in page
+    assert logged_in.post("/settings/", data={**SETTINGS_FORM, "greylisting": ""}).status_code == 302
+    assert get_setting("greylisting") == 0
+    path = Path(config["RSPAMD_MAP_DIR"]) / "scanning.map"
+    assert "greylisting 0" in path.read_text().splitlines()
+    filters.update_settings(greylisting=True)
+    db.session.commit()
+    sync_all()
+    assert "greylisting 1" in path.read_text().splitlines()
+    with pytest.raises(ServiceError):
+        filters.update_settings(greylisting="off")
+    # rspamd.local.lua skips the greylist module and takes the action away
+    lua = LUA.read_text()
+    assert "add_condition('GREYLIST_CHECK', greylisting_on)" in lua
+    assert "add_condition('GREYLIST_SAVE', greylisting_on)" in lua
+    assert "task:disable_action('greylist')" in lua
+
+
+def test_greylisting_api(api, config):
+    assert api("GET", "/settings").get_json()["greylisting"] is True
+    assert api("PATCH", "/settings", json={"greylisting": False}).status_code == 200
+    assert get_setting("greylisting") == 0
+    assert api("PATCH", "/settings", json={"greylisting": "no"}).status_code == 422
 
 
 # ---------------------------------------------------------------------------

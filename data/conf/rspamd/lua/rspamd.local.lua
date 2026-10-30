@@ -265,6 +265,29 @@ rspamd_config:add_condition('CLAM_VIRUS', function(task)
   return scanning:get_key('virus_scanning') ~= '0'
 end)
 
+-- Greylisting switch of the same map: "greylisting 0" skips the greylist
+-- module (local.d/greylist.conf), which neither checks nor stores senders,
+-- and takes the greylist action away, also from the thresholds of domains
+-- and users (settings.conf), so a score above it is no action until the
+-- mark-as-spam threshold. A prefilter of low priority: it runs after the
+-- settings were applied.
+local function greylisting_on()
+  return scanning:get_key('greylisting') ~= '0'
+end
+rspamd_config:add_condition('GREYLIST_CHECK', greylisting_on)
+rspamd_config:add_condition('GREYLIST_SAVE', greylisting_on)
+rspamd_config:register_symbol({
+  name = 'SF_GREYLISTING_OFF',
+  type = 'prefilter',
+  priority = 1,
+  flags = 'empty,nostat',
+  callback = function(task)
+    if not greylisting_on() then
+      task:disable_action('greylist')
+    end
+  end
+})
+
 -- Inbound rate limits of the web UI (Rate limits page,
 -- data/web/crassostrea/services/ratelimits.py): messages per sending IP, per
 -- recipient and bounces (empty sender) per recipient, counted in Valkey for

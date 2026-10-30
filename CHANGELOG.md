@@ -16,6 +16,16 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-30
+
+### Added
+
+- **Greylisting can be turned off**: **Greylisting** in **Settings → General
+  → Spam thresholds** (`greylisting` in `PATCH /api/v1/settings`, on by
+  default). Off, Rspamd defers no mail for its score, also for domains and
+  mailbox users with their own greylist threshold; mark as spam and reject
+  still apply. Rspamd follows within a minute.
+
 ## [0.6.2] - 2026-10-29
 
 ### Changed
@@ -233,7 +243,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/SnailShea/crassostrea/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/SnailShea/crassostrea/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/SnailShea/crassostrea/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/SnailShea/crassostrea/compare/v0.5.1...v0.6.0

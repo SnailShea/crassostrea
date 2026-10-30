@@ -26,6 +26,7 @@
       </div>
       <p class="muted">Greylist: temporarily defer unknown senders. Mark as spam: deliver with
         <code>X-Spam-Flag: YES</code>. Reject: refuse the message (kept in the quarantine).</p>
+      {{ check(form.greylisting, help="Off: no mail is deferred by greylisting, also for domains and mailbox users with their own thresholds; mark as spam and reject still apply. Rspamd follows within a minute.") }}
     </div>
     <div class="card" id="limits">
       <h2>Messages</h2>

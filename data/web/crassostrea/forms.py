@@ -316,6 +316,7 @@ class HostnameForm(FlaskForm):
 
 
 class GlobalSettingsForm(FlaskForm):
+    greylisting = BooleanField("Greylisting")
     greylist_score = FloatField("Greylist", validators=[InputRequired(), NumberRange(-100, 10000)])
     add_header_score = FloatField("Mark as spam", validators=[InputRequired(), NumberRange(-100, 10000)])
     reject_score = FloatField("Reject", validators=[InputRequired(), NumberRange(-100, 10000)])

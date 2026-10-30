@@ -95,8 +95,10 @@ def build_rspamd_maps():
         "relay_networks.map": _lines(networks),
         # key-value map, 0: no limit
         "size_limits.map": HEADER + f"max_attachment_size {get_setting('max_attachment_size_mb') * MIB}\n",
-        # key-value map, 0: the ClamAV check is skipped (rspamd.local.lua)
-        "scanning.map": HEADER + f"virus_scanning {int(bool(get_setting('virus_scanning')))}\n",
+        # key-value map, 0: greylisting is off, the ClamAV check is skipped
+        # (rspamd.local.lua)
+        "scanning.map": HEADER + f"greylisting {int(bool(get_setting('greylisting')))}\n"
+                        f"virus_scanning {int(bool(get_setting('virus_scanning')))}\n",
         "outbound_limits.map": _lines(outbound.build_map()),
         "inbound_limits.map": ratelimits.build_rspamd_map(),
         "rate_limit_exempt.map": ratelimits.build_exempt_map(),

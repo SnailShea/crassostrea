@@ -1288,6 +1288,8 @@ def _configuration_schemas():
 def _settings_properties():
     return {
         "greylist_score": GLOBAL_SCORE, "add_header_score": GLOBAL_SCORE, "reject_score": GLOBAL_SCORE,
+        "greylisting": {"type": "boolean", "description": "Defer unknown senders of mail scoring at least "
+                                                         "greylist_score; off: the other thresholds decide"},
         "quarantine_retention_days": {"type": "integer", "minimum": 1, "maximum": 3650},
         "quarantine_max_size_mb": {"type": "integer", "minimum": 1, "maximum": 100},
         "quarantine_outbound": {"type": "boolean", "description": "Quarantine rejected mail from relay networks"},

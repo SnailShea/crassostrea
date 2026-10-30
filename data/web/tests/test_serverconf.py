@@ -23,7 +23,7 @@ GENERAL = {"greylist_score": "7", "add_header_score": "8", "reject_score": "15",
            "digest_token_days": "7", "mailbox_invite_days": "7", "ptr_check": "off", "timezone": "",
            "session_lifetime_minutes": "480", "login_max_failures": "10", "login_max_account_failures": "30",
            "login_failure_window_minutes": "15", "postfix_log_lines": "9999", "http_redirect": "y",
-           "virus_scanning": "y"}
+           "virus_scanning": "y", "greylisting": "y"}
 
 
 def _save(client, **changes):

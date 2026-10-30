@@ -31,7 +31,8 @@ existing mail server. A Flask web interface manages it.
   checks, SpamAssassin rules, heuristics), ClamAV, Olefy (Office macros) and
   Postfix postscreen.
 - **Spam thresholds**: global and per-domain values for greylist, mark as spam
-  (`X-Spam-Flag: YES`) and reject.
+  (`X-Spam-Flag: YES`) and reject; greylisting can be turned off (Settings →
+  General).
 - **Allow and block lists** (Lists & training → Allow list, Block list): global or per domain, by sender address or pattern
   (`user@example.org`, `*@example.org`) or by IP network. Allow entries are
   ignored when the sender fails its own DMARC/SPF policy (including SPF softfail

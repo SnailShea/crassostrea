@@ -249,7 +249,7 @@ def delete_relay_network(network):
 # Global settings
 # ---------------------------------------------------------------------------
 
-SETTINGS = ("greylist_score", "add_header_score", "reject_score", "quarantine_retention_days",
+SETTINGS = ("greylisting", "greylist_score", "add_header_score", "reject_score", "quarantine_retention_days",
             "quarantine_max_size_mb", "quarantine_outbound", "maillog_retention_days", "max_message_size_mb",
             "max_attachment_size_mb", "require_admin_2fa", "audit_retention_days", "digest_interval",
             "digest_sender", "digest_token_days", "mailbox_auto_create", "mailbox_invite_days", "virus_scanning",
@@ -300,9 +300,9 @@ ALL_SETTINGS = (SETTINGS + BACKUP_SETTINGS + OUTBOUND_SETTINGS + RATE_LIMIT_SETT
                 + IMPERSONATION_SETTINGS
                 + LINK_SETTINGS + HASHCHECK_SETTINGS + REPORT_SETTINGS + STATS_SETTINGS + MONITORING_SETTINGS
                 + JOURNAL_SETTINGS + USER_REPORT_SETTINGS + UPDATE_SETTINGS + WATCHDOG_SETTINGS)
-BOOLEAN_SETTINGS = ("quarantine_outbound", "require_admin_2fa", "backup_include_mail_log", "backup_include_quarantine",
-                    "attachment_scan_archives", "attachment_block_encrypted", "attachment_outbound",
-                    "link_protection_allow_continue", "hashcheck_mhr", "dmarc_send_reports", "siem_verify_tls",
+BOOLEAN_SETTINGS = ("greylisting", "quarantine_outbound", "require_admin_2fa", "backup_include_mail_log",
+                    "backup_include_quarantine", "attachment_scan_archives", "attachment_block_encrypted",
+                    "attachment_outbound", "link_protection_allow_continue", "hashcheck_mhr", "dmarc_send_reports", "siem_verify_tls",
                     "siem_mail_log", "siem_audit", "journal_inbound", "journal_outbound", "journal_rejected",
                     "user_reports_enabled", "user_reports_confirm", "mailbox_auto_create", "virus_scanning",
                     "http_redirect", "watchdog_notify_start", "watchdog_notify_ban")
@@ -425,7 +425,7 @@ def update_settings(**changes):
         values["quarantine_outbound"] = int(_bool(changes["quarantine_outbound"], "quarantine_outbound"))
     if "audit_retention_days" in changes:
         values["audit_retention_days"] = _int(changes["audit_retention_days"], "audit_retention_days", 30, 3650)
-    for key in ("require_admin_2fa", "backup_include_mail_log", "backup_include_quarantine",
+    for key in ("greylisting", "require_admin_2fa", "backup_include_mail_log", "backup_include_quarantine",
                 "attachment_scan_archives", "attachment_block_encrypted", "attachment_outbound",
                 "link_protection_allow_continue", "hashcheck_mhr", "dmarc_send_reports", "siem_verify_tls",
                 "siem_mail_log", "siem_audit", "journal_inbound", "journal_outbound", "journal_rejected",

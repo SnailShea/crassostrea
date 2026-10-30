@@ -779,6 +779,9 @@ SETTING_DEFAULTS = {
     "reject_score": 15.0,
     "add_header_score": 8.0,
     "greylist_score": 7.0,
+    # Greylisting by rspamd at greylist_score (1/0; off: such mail is not
+    # deferred, the other thresholds decide)
+    "greylisting": 1,
     "quarantine_retention_days": 14,
     "quarantine_max_size_mb": 10,
     # Store rejected mail sent from relay networks (1/0)
