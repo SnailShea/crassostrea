@@ -16,6 +16,21 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-30
+
+### Fixed
+
+- **Every scan waited four seconds**, so inbound mail was accepted slowly
+  (about 4.5 s per message and SMTP connection): Rspamd queried the public fuzzy storage of the mailcow project
+  (`fuzzy.mailcow.email:11445`, symbols `CRASSOSTREA_FUZZY_*`), which never
+  answered. The rule is removed; the local fuzzy storage and the one of
+  rspamd.com remain. Scans take well under a second again.
+- **postscreen crashed now and then** and dropped its connections:
+  proxywrite panicked opening the postscreen cache ("both open lock and
+  access lock"), and postscreen exited on its watchdog. postscreen now opens
+  `lmdb:$data_directory/postscreen_cache` itself; the listener of
+  `HAPROXY_LISTENER` has its own `postscreen_cache_haproxy`.
+
 ## [0.7.0] - 2026-10-30
 
 ### Added
@@ -243,7 +258,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/SnailShea/crassostrea/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/SnailShea/crassostrea/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/SnailShea/crassostrea/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/SnailShea/crassostrea/compare/v0.6.0...v0.6.1

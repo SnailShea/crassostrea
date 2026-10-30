@@ -533,6 +533,7 @@ EOF
       echo
       echo "${HAPROXY_LISTENER_BIND:-127.0.0.1:10025} inet n - n - 1 postscreen"
       echo "  -o postscreen_upstream_proxy_protocol=haproxy"
+      echo "  -o postscreen_cache_map=lmdb:\$data_directory/postscreen_cache_haproxy"
       echo "  -o syslog_name=haproxy"
     fi
   } | write_file "${POSTFIX_DIR}/master.cf" 0644

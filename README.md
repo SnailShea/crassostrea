@@ -791,8 +791,8 @@ replication (`REDIS_SLAVEOF_*`), the MySQL replication check of the watchdog,
 `SNAT_TO_SOURCE` and per-name certificates (SNI): one certificate covers the
 hostname and `ADDITIONAL_SAN`.
 
-The rspamd fuzzy rule that queries the public fuzzy storage of the mailcow
-project reports `CRASSOSTREA_FUZZY_*` symbols.
+Rspamd uses only the gateway's own fuzzy storage, not the public one of the
+mailcow project.
 
 ## License
 
