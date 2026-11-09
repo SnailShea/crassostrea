@@ -85,6 +85,16 @@ def back(endpoint, **values):
     return safe_next(request.form.get("next"), url_for(endpoint, **values))
 
 
+def paginate(query, per_page):
+    """The page of ``query`` that the 'page' argument asks for. Past the last
+    page it is the last one: after acting on every row of the last page the
+    redirect back asks for a page that no longer exists."""
+    pagination = query.paginate(page=request.args.get("page", 1, type=int), per_page=per_page, error_out=False)
+    if not pagination.items and pagination.total:
+        pagination = query.paginate(page=pagination.pages, per_page=per_page, error_out=False)
+    return pagination
+
+
 def render_live(template, fragment, **context):
     """Render a page, or only its live region when the page's script asks for
     it (header X-Live-Fragment: 1, see static/app.js): after an in-page form

@@ -8,7 +8,7 @@ from ..models import DIRECTIONS, Domain, MailLogEntry, get_setting
 from ..services import deliveries, html_preview as html_preview_service, mailer, maillog
 from ..services.errors import ServiceError
 from ..services.quarantine import parse_message
-from . import html_preview, protected_blueprint, render_live, scope
+from . import html_preview, paginate, protected_blueprint, render_live, scope
 
 bp = protected_blueprint("maillog", __name__, url_prefix="/mail-log", domain_admins=True)
 
@@ -17,12 +17,11 @@ PER_PAGE = 50
 
 @bp.get("/")
 def index():
-    page = request.args.get("page", 1, type=int)
     allowed = scope()
     query = maillog.filtered(request.args.get("direction", ""), request.args.get("action", ""),
                              request.args.get("domain", ""), request.args.get("q", ""), domains=allowed,
                              delivery=request.args.get("delivery", ""))
-    pagination = query.paginate(page=page, per_page=PER_PAGE, error_out=False)
+    pagination = paginate(query, PER_PAGE)
     domains = [d.name for d in Domain.query.order_by(Domain.name) if allowed is None or d.name in allowed]
     return render_live("maillog/index.html", "maillog/_live.html", pagination=pagination, domains=domains,
                        directions=DIRECTIONS, actions=maillog.ACTIONS, delivery=deliveries.states(pagination.items),

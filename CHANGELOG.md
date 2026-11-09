@@ -16,6 +16,16 @@ tag `vMAJOR.MINOR.PATCH`; gateways on the release channel move to it with
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-11-09
+
+### Fixed
+
+- **The quarantine looked empty after acting on its last page**: releasing,
+  learning or deleting every message on, say, page 2 of 2 reloaded page 2,
+  which no longer existed, and the list said "The quarantine is empty". A page
+  past the end now shows the last page, in the quarantine, the mail log, the
+  audit log and the mailbox users' quarantine (portal and digest link).
+
 ## [0.7.1] - 2026-10-30
 
 ### Fixed
@@ -258,7 +268,8 @@ distribution packages, set up by `setup.sh` or from the installation ISO.
   with boot parameters), update channels (`UPDATE_CHANNEL`: releases or the
   branch), the documentation served at `/docs/`.
 
-[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/SnailShea/crassostrea/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/SnailShea/crassostrea/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/SnailShea/crassostrea/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/SnailShea/crassostrea/compare/v0.6.2...v0.7.0
 [0.6.2]: https://github.com/SnailShea/crassostrea/compare/v0.6.1...v0.6.2

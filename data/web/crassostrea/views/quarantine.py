@@ -11,7 +11,7 @@ from ..services.maps import sync_all
 from ..services.quarantine import (SENDER_SCOPES, base_address, learn_spam_and_delete, list_sender, owned_by,
                                    parse_message, release, sender_mailbox)
 from ..services.rspamd import RspamdError
-from . import back, html_preview, protected_blueprint, render_live, require_scope, scope
+from . import back, html_preview, paginate, protected_blueprint, render_live, require_scope, scope
 
 bp = protected_blueprint("quarantine", __name__, url_prefix="/quarantine", domain_admins=True)
 
@@ -58,9 +58,7 @@ def _owner():
 
 @bp.get("/")
 def index():
-    page = request.args.get("page", 1, type=int)
-    pagination = (_filtered_query().order_by(QuarantineItem.created_at.desc())
-                  .paginate(page=page, per_page=PER_PAGE, error_out=False))
+    pagination = paginate(_filtered_query().order_by(QuarantineItem.created_at.desc()), PER_PAGE)
     domains = _domains()
     owner = _owner()
     mailbox = MailboxUser.query.filter_by(email=owner).first() if owner else None

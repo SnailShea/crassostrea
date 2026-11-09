@@ -186,6 +186,19 @@ def test_bulk_delete_and_safe_next(logged_in, item):
     assert QuarantineItem.query.count() == 0
 
 
+def test_bulk_release_of_last_page_shows_the_page_before(logged_in, domains, sent):
+    db.session.add_all(QuarantineItem(rcpt="alice@example.com", domain="example.com", message=RAW, symbols="[]",
+                                      subject=f"Pills {n}") for n in range(58))
+    db.session.commit()
+    page2 = logged_in.get("/quarantine/?page=2")
+    ids = [str(i.id) for i in QuarantineItem.query.order_by(QuarantineItem.created_at.desc()).offset(50)]
+    assert len(ids) == 8 and b"Page 2 of 2" in page2.data
+    response = logged_in.post("/quarantine/bulk", data={"action": "release", "ids": ids,
+                                                        "next": "/quarantine/?page=2"}, follow_redirects=True)
+    assert len(sent) == 8
+    assert b"The quarantine is empty" not in response.data and response.data.count(b"Pills ") >= 50
+
+
 def test_cleanup_command(app, item):
     item.created_at = utcnow() - timedelta(days=get_setting("quarantine_retention_days") + 1)
     db.session.commit()

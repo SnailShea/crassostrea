@@ -9,7 +9,7 @@ from flask_login import current_user
 from ..extensions import db
 from ..models import QuarantineItem
 from ..services.quarantine import owned_by, parse_message, self_service_release
-from . import back, mailbox_blueprint, mailbox_settings
+from . import back, mailbox_blueprint, mailbox_settings, paginate
 
 bp = mailbox_blueprint("portal", __name__, url_prefix="/my")
 
@@ -34,9 +34,7 @@ def index():
     if search:
         like = f"%{search}%"
         query = query.filter(db.or_(QuarantineItem.subject.ilike(like), QuarantineItem.sender.ilike(like)))
-    page = request.args.get("page", 1, type=int)
-    pagination = (query.order_by(QuarantineItem.created_at.desc())
-                  .paginate(page=page, per_page=PER_PAGE, error_out=False))
+    pagination = paginate(query.order_by(QuarantineItem.created_at.desc()), PER_PAGE)
     return render_template("portal/index.html", pagination=pagination)
 
 

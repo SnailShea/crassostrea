@@ -10,7 +10,7 @@ from ..extensions import db
 from ..models import QuarantineItem, utcnow
 from ..services.digest import resolve_token
 from ..services.quarantine import owned_by, parse_message, self_service_release, sender_mailbox
-from . import mailbox_settings, safe_next
+from . import mailbox_settings, paginate, safe_next
 
 bp = Blueprint("token", __name__, url_prefix="/q/<token>")
 
@@ -58,9 +58,7 @@ def _get(item_id):
 
 @bp.get("/")
 def index():
-    page = request.args.get("page", 1, type=int)
-    pagination = (_items().order_by(QuarantineItem.created_at.desc())
-                  .paginate(page=page, per_page=PER_PAGE, error_out=False))
+    pagination = paginate(_items().order_by(QuarantineItem.created_at.desc()), PER_PAGE)
     return render_template("token/index.html", pagination=pagination, address=g.digest_address)
 
 
